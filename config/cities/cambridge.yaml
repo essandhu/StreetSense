@@ -1,0 +1,23 @@
+# Cambridge, Massachusetts — Phase 1 default city.
+#
+# City is configuration, never code. To add a new city, drop a sibling YAML
+# next to this one and set `default: false`. The `__schema__.yaml` next to
+# this file describes the required shape.
+
+name: cambridge
+default: true
+
+# Approximate Cambridge city limits in WGS84 (lon, lat).
+# Order: [min_lon, min_lat, max_lon, max_lat].
+bbox: [-71.16, 42.35, -71.07, 42.41]
+
+# Geofabrik publishes Massachusetts-wide extracts daily. We download the state
+# extract and clip to bbox at parse time (see ingestion/osm/).
+geofabrik_extract_url: https://download.geofabrik.de/north-america/us/massachusetts-latest.osm.pbf
+
+# Local cache path for the downloaded PBF. Resolved relative to the project
+# root. The ingestion runner creates this directory if missing.
+local_cache_path: data/osm/massachusetts-latest.osm.pbf
+
+# Display label used by future multi-city UIs (Phase 5+). Phase 1 ignores.
+display_name: "Cambridge, MA"
