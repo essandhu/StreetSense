@@ -1,0 +1,126 @@
+# StreetSense CI.
+#
+# Runner choice: GitHub Actions. Picked because the repo is hosted (or will
+# be) on GitHub and Actions has first-class service-container support for
+# the Postgres+PostGIS integration job.
+#
+# Jobs:
+#   python    -- ruff check + ruff format check + mypy --strict + pytest
+#   frontend  -- eslint + prettier --check + tsc --noEmit + vitest
+#   db        -- boots Postgres+PostGIS, applies migrations, runs schema-
+#                invariant tests from tests/db/ (Phase 1.2.4).
+#
+# Performance budgets (sub-100ms pan/zoom, p99 tile latency) are checked by
+# the separate benchmark workflows added in Phase 1.5 and Phase 1.6.
+
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    name: Python (ruff + mypy + pytest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Ruff check
+        run: uv run ruff check .
+      - name: Ruff format check
+        run: uv run ruff format --check .
+      - name: Mypy --strict
+        run: uv run mypy
+      - name: Pytest (non-integration)
+        run: uv run pytest -m "not integration"
+
+  frontend:
+    name: Frontend (eslint + prettier + tsc + vitest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: ESLint
+        run: pnpm lint
+      - name: Prettier
+        run: pnpm format:check
+      - name: TypeScript
+        run: pnpm typecheck
+      - name: Vitest
+        run: pnpm test
+
+  db:
+    name: Postgres integration (schema invariants)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: streetsense
+          POSTGRES_USER: streetsense
+          POSTGRES_PASSWORD: streetsense
+        ports:
+          - 5432:5432
+        # Wait until *postgis* itself is queryable, not just the socket.
+        options: >-
+          --health-cmd "pg_isready -U streetsense -d streetsense && psql -U streetsense -d streetsense -tAc \"SELECT 1 FROM pg_extension WHERE extname='postgis'\" | grep -q 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+          --health-start-period 10s
+    env:
+      DATABASE_URL: postgresql+psycopg://streetsense:streetsense@localhost:5432/streetsense
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: streetsense
+      POSTGRES_USER: streetsense
+      POSTGRES_PASSWORD: streetsense
+      POSTGRES_APP_USER: streetsense_app
+      POSTGRES_APP_PASSWORD: streetsense_app
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Set up Python
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --frozen
+      - name: Ensure pgcrypto extension is present
+        run: psql "$DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS pgcrypto;"
+        env:
+          DATABASE_URL: postgresql://streetsense:streetsense@localhost:5432/streetsense
+      - name: Apply Alembic migrations
+        run: uv run alembic upgrade head
+      - name: Schema invariant tests
+        run: uv run pytest tests/db -v -m "integration or not integration"
