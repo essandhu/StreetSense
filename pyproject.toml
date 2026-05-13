@@ -20,6 +20,8 @@ dependencies = [
     "shapely>=2.0",
     "pyproj>=3.7",
     "osmium>=4.0",
+    # Solar geometry (Phase 2 environmental scorer). See ADR 0003.
+    "pvlib>=0.11",
     # Logging / config
     "structlog>=24.4",
     "pyyaml>=6.0",
@@ -113,6 +115,8 @@ module = [
     "pyproj.*",
     "vcr.*",
     "xxhash.*",
+    "pvlib.*",
+    "pandas.*",
 ]
 ignore_missing_imports = true
 
