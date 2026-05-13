@@ -222,6 +222,30 @@ class TestSegmentScoresReproducibility:
             owner_conn.rollback()
 
 
+# --- Per-sub-score is_stub_* flags (Phase 2.3.3) --------------------------
+SUB_SCORE_STUB_COLUMNS = (
+    "is_stub_lane_marking",
+    "is_stub_glare",
+    "is_stub_junction_complexity",
+    "is_stub_historical",
+)
+
+
+class TestSegmentScoresStubFlags:
+    @pytest.mark.parametrize("column", SUB_SCORE_STUB_COLUMNS)
+    def test_is_stub_column_exists_and_defaults_true(
+        self, owner_conn: psycopg.Connection[Any], column: str
+    ) -> None:
+        cols = _column_info(owner_conn, "segment_scores")
+        assert column in cols, f"segment_scores missing per-sub-score stub column {column}"
+        data_type, is_nullable, default = cols[column]
+        assert data_type == "boolean"
+        assert is_nullable == "NO", f"{column} must be NOT NULL"
+        assert default is not None and "true" in default.lower(), (
+            f"{column} should default to true; got default={default!r}"
+        )
+
+
 # --- Append-only enforcement at the role level ----------------------------
 class TestAppendOnlyAtRoleLevel:
     @pytest.mark.parametrize("table", ["scoring_runs", "segment_scores"])
