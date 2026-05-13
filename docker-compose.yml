@@ -1,0 +1,33 @@
+# StreetSense local data plane.
+#
+# Phase 1: Postgres 16 + PostGIS 3.4 only. MinIO is added in Phase 3 when
+# imagery ingestion lands; do not preempt it here.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: streetsense-postgres
+    environment:
+      POSTGRES_DB: streetsense
+      POSTGRES_USER: streetsense
+      POSTGRES_PASSWORD: streetsense
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Wait until PostGIS is actually available, not just the postgres socket.
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U streetsense -d streetsense && psql -U streetsense -d streetsense -tAc \"SELECT 1 FROM pg_extension WHERE extname='postgis'\" | grep -q 1"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: streetsense-pgdata
