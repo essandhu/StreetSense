@@ -1380,6 +1380,7 @@ dev = [
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "ruff" },
+    { name = "types-jsonschema" },
     { name = "types-pyyaml" },
     { name = "vcrpy" },
 ]
@@ -1409,6 +1410,7 @@ dev = [
     { name = "pytest-asyncio", specifier = ">=0.24" },
     { name = "pytest-cov", specifier = ">=5.0" },
     { name = "ruff", specifier = ">=0.7" },
+    { name = "types-jsonschema", specifier = ">=4.23" },
     { name = "types-pyyaml", specifier = ">=6.0" },
     { name = "vcrpy", specifier = ">=6.0" },
 ]
@@ -1420,6 +1422,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/ef/52/9ba0f43b686e7f3ddfeaa78ac3af750292662284b3661e91ad5494f21dbc/structlog-25.5.0.tar.gz", hash = "sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98", size = 1460830, upload-time = "2025-10-27T08:28:23.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a8/45/a132b9074aa18e799b891b91ad72133c98d8042c70f6240e4c5f9dabee2f/structlog-25.5.0-py3-none-any.whl", hash = "sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f", size = 72510, upload-time = "2025-10-27T08:28:21.535Z" },
+]
+
+[[package]]
+name = "types-jsonschema"
+version = "4.26.0.20260508"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "referencing" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/11/d8/7ba8007c48e0de93d82268e0447312c9c28d90ac7a8f73e034356bb40921/types_jsonschema-4.26.0.20260508.tar.gz", hash = "sha256:ae0be85ac6ec0cb94a98f75f876b0620cf2afa3e37fdf8460203f4d05f745acb", size = 16602, upload-time = "2026-05-08T04:51:45.26Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/55/4f25833c410426b1f359dd579f3b3d1ee0f43f5674b23a815f396d3ea63c/types_jsonschema-4.26.0.20260508-py3-none-any.whl", hash = "sha256:4ec1dea0a757c8c2e2aa7bc085612fb54e1ae9562428d5da6f26dd7a0f24dbc2", size = 16062, upload-time = "2026-05-08T04:51:44.437Z" },
 ]
 
 [[package]]
