@@ -61,7 +61,9 @@ function Invoke-Api {
 }
 
 function Invoke-ScoringRun {
-    Write-Output "No scorers in Phase 1. Phase 2 adds environmental scorer; Phase 3 perception; Phase 4 propagator."
+    Invoke-DbUp
+    Invoke-Migrate
+    uv run python -m scoring.cli run --city $City
 }
 
 function Invoke-TestPy { uv run pytest }

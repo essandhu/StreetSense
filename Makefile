@@ -57,8 +57,8 @@ seed: db-up migrate
 api: db-up migrate
 	$(UV) run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
 
-scoring-run:
-	@printf 'No scorers in Phase 1. Phase 2 adds environmental scorer; Phase 3 perception; Phase 4 propagator.\n'
+scoring-run: db-up migrate
+	$(UV) run python -m scoring.cli run --city $(CITY)
 
 # --- Tests ----------------------------------------------------------------
 test: test-py test-fe
