@@ -69,6 +69,8 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: OpenAPI typegen drift
+        run: pnpm typegen:check
       - name: ESLint
         run: pnpm lint
       - name: Prettier

@@ -15,7 +15,10 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install --with-deps chromium"
+    "test:e2e:install": "playwright install --with-deps chromium",
+    "bench:frontend": "playwright test --config=playwright.bench.config.ts",
+    "typegen": "openapi-typescript ./openapi.json -o ./src/domain/generated/api.ts",
+    "typegen:check": "openapi-typescript ./openapi.json -o ./src/domain/generated/api.ts && git diff --exit-code -- ./src/domain/generated/api.ts"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.3.0",
@@ -40,6 +43,7 @@
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
     "jsdom": "^25.0.1",
+    "openapi-typescript": "^7.4.4",
     "prettier": "^3.4.2",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",

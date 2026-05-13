@@ -17,8 +17,8 @@ def test_streetsense_packages_import() -> None:
 def test_core_runtime_deps_import() -> None:
     """Smoke-check the runtime dependencies declared in pyproject.toml."""
     import fastapi  # noqa: F401
-    import pydantic  # noqa: F401
     import psycopg  # noqa: F401
+    import pydantic  # noqa: F401
     import shapely  # noqa: F401
     import structlog  # noqa: F401
     import xxhash  # noqa: F401

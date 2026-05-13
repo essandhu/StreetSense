@@ -1,0 +1,285 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "StreetSense API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/segments/{segment_id}": {
+      "get": {
+        "tags": ["segments"],
+        "summary": "Get Segment",
+        "description": "Return the per-segment detail payload.\n\nPhase 1: `risk_stub` is always True. The shape is stable across phases \u2014\nPhase 2/3/4 fill in real values without breaking changes.",
+        "operationId": "get_segment_segments__segment_id__get",
+        "parameters": [
+          {
+            "name": "segment_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Segment Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SegmentDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/freshness": {
+      "get": {
+        "tags": ["admin"],
+        "summary": "Freshness",
+        "operationId": "freshness_admin_freshness_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreshnessReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": ["meta"],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "FreshnessEntry": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "last_ingested_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Ingested At"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata"
+          }
+        },
+        "type": "object",
+        "required": ["name", "last_ingested_at"],
+        "title": "FreshnessEntry",
+        "description": "One row of `/admin/freshness`."
+      },
+      "FreshnessReport": {
+        "properties": {
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/FreshnessEntry"
+            },
+            "type": "array",
+            "title": "Sources"
+          },
+          "server_time": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Server Time"
+          }
+        },
+        "type": "object",
+        "required": ["sources", "server_time"],
+        "title": "FreshnessReport",
+        "description": "Response shape for `/admin/freshness`.\n\nA *list* (wrapped) \u2014 not a single object \u2014 so Phase 3 can register\nmultiple data sources (imagery providers, incident feeds) without a\nbreaking API change."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SegmentDetail": {
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Segment Id"
+          },
+          "osm_way_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Osm Way Id"
+          },
+          "composite_risk": {
+            "type": "number",
+            "title": "Composite Risk",
+            "description": "Composite risk in [0, 1]. Phase 1: stub. See risk_stub."
+          },
+          "sub_scores": {
+            "$ref": "#/components/schemas/SubScores"
+          },
+          "confidence": {
+            "type": "number",
+            "title": "Confidence",
+            "description": "Confidence in [0, 1]. Phase 1: stub (0.0). Real values arrive Phase 4."
+          },
+          "risk_stub": {
+            "type": "boolean",
+            "title": "Risk Stub",
+            "description": "True if composite_risk / sub_scores are stub values. Consumers must check this \u2014 Phase 1 always returns true."
+          },
+          "attrs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Attrs",
+            "description": "Selected OSM attributes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "segment_id",
+          "osm_way_id",
+          "composite_risk",
+          "sub_scores",
+          "confidence",
+          "risk_stub"
+        ],
+        "title": "SegmentDetail",
+        "description": "Per-segment detail payload returned by GET /segments/{id}."
+      },
+      "SubScores": {
+        "properties": {
+          "lane_marking_quality": {
+            "type": "number",
+            "title": "Lane Marking Quality",
+            "description": "Lane marking degradation risk in [0, 1]. Higher = worse."
+          },
+          "glare_exposure": {
+            "type": "number",
+            "title": "Glare Exposure",
+            "description": "Sun-glare exposure risk in [0, 1] for the configured time window."
+          },
+          "junction_complexity": {
+            "type": "number",
+            "title": "Junction Complexity",
+            "description": "Junction topology complexity in [0, 1]. Higher = more complex."
+          },
+          "historical_correlation": {
+            "type": "number",
+            "title": "Historical Correlation",
+            "description": "Correlation with historical incident clusters in [0, 1]."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lane_marking_quality",
+          "glare_exposure",
+          "junction_complexity",
+          "historical_correlation"
+        ],
+        "title": "SubScores",
+        "description": "Four sub-scores carried in every composite-risk response.\n\nPhase 1 stub values. Phase 2 fills `glare_exposure`; Phase 3 fills\n`lane_marking_quality` and `historical_correlation`; Phase 4 fills the\nweighted composite. `junction_complexity` is derived from OSM topology\nin Phase 3+."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": ["loc", "msg", "type"],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

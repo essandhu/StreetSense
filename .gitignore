@@ -66,7 +66,7 @@ CMakeUserPresets.json
 *.osm
 *.osm.gz
 *.osm.bz2
-data/
+/data/
 cache/
 .cache/
 *.sqlite
