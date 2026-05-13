@@ -8,8 +8,10 @@ or run via `make test`.
 
 from __future__ import annotations
 
+import asyncio
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,21 @@ import psycopg
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+# psycopg's async pool needs SelectorEventLoop on Windows. Set the policy
+# globally for the test session so any async test (api/, future ones) gets
+# a compatible loop.
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+
+
+@pytest.fixture(scope="session")
+def event_loop_policy() -> asyncio.AbstractEventLoopPolicy:
+    """Override pytest-asyncio's event loop policy to be SelectorEventLoop on Windows."""
+    if sys.platform == "win32":
+        return asyncio.WindowsSelectorEventLoopPolicy()
+    return asyncio.DefaultEventLoopPolicy()
 
 
 def _require_env(name: str) -> str:

@@ -28,6 +28,24 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # Vector tile server (ADR 0002). Connects as the app role so it inherits
+  # the same least-privilege grants as FastAPI (SELECT only on the
+  # publishing view).
+  tileserv:
+    image: pramsey/pg_tileserv:latest
+    container_name: streetsense-tileserv
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://streetsense_app:streetsense_app@postgres:5432/streetsense
+      TS_BASEPATH: /tiles
+      TS_HTTPPORT: "7800"
+      TS_CORSORIGINS: "*"
+    ports:
+      - "7800:7800"
+    restart: unless-stopped
+
 volumes:
   pgdata:
     name: streetsense-pgdata
