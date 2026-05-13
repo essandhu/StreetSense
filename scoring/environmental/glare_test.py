@@ -121,4 +121,4 @@ class TestScorerProtocolFields:
         from pydantic import ValidationError
 
         with pytest.raises((TypeError, ValidationError)):
-            result.value = 0.5  # type: ignore[misc]
+            result.value = 0.5
