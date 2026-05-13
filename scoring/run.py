@@ -235,7 +235,7 @@ class ScoringRun:
         return frozenset(self._scorers)
 
     def execute(self, *, batch_size: int = 1000) -> ScoringRunSummary:
-        """Stream segments × temporal samples and persist their scores."""
+        """Stream segments x temporal samples and persist their scores."""
         run_id = uuid.uuid4()
         run_timestamp = datetime.now(UTC)
         t0 = time.perf_counter()
@@ -338,9 +338,7 @@ class ScoringRun:
         }
 
 
-def _flush(
-    conn: psycopg.Connection[tuple[object, ...]], batch: Iterable[dict[str, object]]
-) -> int:
+def _flush(conn: psycopg.Connection[tuple[object, ...]], batch: Iterable[dict[str, object]]) -> int:
     rows = list(batch)
     if not rows:
         return 0

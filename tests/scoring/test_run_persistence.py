@@ -1,7 +1,7 @@
 """End-to-end persistence test for `ScoringRun.execute()` — Task 2.3.2.
 
 Asserts that running the scoring orchestration against a tiny fixture
-network (3 segments × 4 timestamps) writes exactly 12 ``segment_scores``
+network (3 segments x 4 timestamps) writes exactly 12 ``segment_scores``
 rows, each carrying:
 
 - All six reproducibility fields populated.
@@ -64,9 +64,9 @@ FIXTURE_METADATA = SnapshotMetadata(
 )
 
 TEMPORAL_SAMPLES = (
-    datetime(2025, 6, 21, 6, 0, tzinfo=UTC),   # ~02:00 EDT — sun below horizon
+    datetime(2025, 6, 21, 6, 0, tzinfo=UTC),  # ~02:00 EDT — sun below horizon
     datetime(2025, 6, 21, 10, 0, tzinfo=UTC),  # ~06:00 EDT — low east sun
-    datetime(2025, 6, 21, 16, 50, tzinfo=UTC), # ~solar noon Cambridge
+    datetime(2025, 6, 21, 16, 50, tzinfo=UTC),  # ~solar noon Cambridge
     datetime(2025, 6, 21, 22, 0, tzinfo=UTC),  # ~18:00 EDT — low west sun
 )
 

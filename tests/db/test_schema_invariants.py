@@ -241,7 +241,8 @@ class TestSegmentScoresStubFlags:
         data_type, is_nullable, default = cols[column]
         assert data_type == "boolean"
         assert is_nullable == "NO", f"{column} must be NOT NULL"
-        assert default is not None and "true" in default.lower(), (
+        assert default is not None, f"{column} should have a default"
+        assert "true" in default.lower(), (
             f"{column} should default to true; got default={default!r}"
         )
 
