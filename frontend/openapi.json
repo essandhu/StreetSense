@@ -7,9 +7,7 @@
   "paths": {
     "/segments/{segment_id}": {
       "get": {
-        "tags": [
-          "segments"
-        ],
+        "tags": ["segments"],
         "summary": "Get Segment",
         "description": "Return the per-segment detail payload.\n\nPer-sub-score `is_stub` flags expose which scorers are real:\nglare flips to false in Phase 2; the other three remain true.",
         "operationId": "get_segment_segments__segment_id__get",
@@ -70,9 +68,7 @@
     },
     "/admin/freshness": {
       "get": {
-        "tags": [
-          "admin"
-        ],
+        "tags": ["admin"],
         "summary": "Freshness",
         "operationId": "freshness_admin_freshness_get",
         "responses": {
@@ -91,9 +87,7 @@
     },
     "/health": {
       "get": {
-        "tags": [
-          "meta"
-        ],
+        "tags": ["meta"],
         "summary": "Health",
         "operationId": "health_health_get",
         "responses": {
@@ -142,10 +136,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "name",
-          "last_ingested_at"
-        ],
+        "required": ["name", "last_ingested_at"],
         "title": "FreshnessEntry",
         "description": "One row of `/admin/freshness`."
       },
@@ -165,10 +156,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "sources",
-          "server_time"
-        ],
+        "required": ["sources", "server_time"],
         "title": "FreshnessReport",
         "description": "Response shape for `/admin/freshness`.\n\nA *list* (wrapped) \u2014 not a single object \u2014 so Phase 3 can register\nmultiple data sources (imagery providers, incident feeds) without a\nbreaking API change."
       },
@@ -226,13 +214,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "segment_id",
-          "osm_way_id",
-          "composite_risk",
-          "sub_scores",
-          "confidence"
-        ],
+        "required": ["segment_id", "osm_way_id", "composite_risk", "sub_scores", "confidence"],
         "title": "SegmentDetail",
         "description": "Per-segment detail payload returned by GET /segments/{id}.\n\nPhase 2: top-level `risk_stub` flag removed; per-sub-score\n`is_stub` flags inside `sub_scores` replace it."
       },
@@ -264,11 +246,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "value",
-          "confidence",
-          "is_stub"
-        ],
+        "required": ["value", "confidence", "is_stub"],
         "title": "SubScore",
         "description": "One sub-score's per-segment, per-timestamp output as exposed at\nthe API boundary.\n\nMirrors `scoring.interface.SubScoreResult` but lives in `api/` so\nthe API can evolve its serialization independently if needed."
       },
@@ -330,11 +308,7 @@
           }
         },
         "type": "object",
-        "required": [
-          "loc",
-          "msg",
-          "type"
-        ],
+        "required": ["loc", "msg", "type"],
         "title": "ValidationError"
       }
     }

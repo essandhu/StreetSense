@@ -118,7 +118,14 @@ export const Map = ({
       zoom: initialZoom,
     });
     mapRef.current = map;
-    onReady?.(map);
+    // Defer onReady until MapLibre's style finishes loading — deck.gl's
+    // MapboxOverlay can attach pre-load but its first frame will
+    // mis-fire if the underlying GL context isn't ready.
+    if (map.loaded()) {
+      onReady?.(map);
+    } else {
+      map.once("load", () => onReady?.(map));
+    }
 
     return () => {
       onReady?.(null);
