@@ -1,0 +1,78 @@
+# Build manifest for the `streetsense-propagator` Python package.
+#
+# This is StreetSense's only native package: a C++17 graph-compute engine
+# on Boost.Graph, exposed to Python via pybind11. The build backend is
+# scikit-build-core, which drives CMake during wheel construction. The
+# root project (./../../pyproject.toml) keeps hatchling for the pure-
+# Python packages (api/, ingestion/, scoring/); only this subpackage
+# needs CMake.
+#
+# Phase 4 integration:
+#   - Phase 4.1: this pyproject and a minimal CMakeLists.txt exist;
+#     the package is NOT yet wired into root `uv sync` (no [tool.uv.sources]
+#     entry in root pyproject) so the existing CI Python job is unaffected.
+#   - Phase 4.1.7+: CMakeLists grows real C++ targets and bindings.
+#   - End of Phase 4.1: workspace integration with root pyproject so
+#     `uv sync` builds and installs the bindings editable into the venv.
+#
+# Until the C++ build is in place (Tasks 4.1.7+ and Phase 4.2+), do NOT
+# build this package via `pip install` / `uv pip install` — the
+# CMakeLists is intentionally a stub.
+
+[build-system]
+requires = [
+    "scikit-build-core>=0.10",
+    "pybind11>=2.11",
+]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "streetsense-propagator"
+version = "0.1.0"
+description = "StreetSense Network Risk Propagator — native C++17 engine on Boost.Graph with pybind11 bindings"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "TBD" }
+authors = [{ name = "StreetSense" }]
+keywords = ["streetsense", "propagator", "boost-graph", "pybind11"]
+
+[project.urls]
+Homepage = "https://github.com/streetsense/streetsense"
+Documentation = "https://github.com/streetsense/streetsense/blob/main/scoring/propagator/README.md"
+
+# ---------------------------------------------------------------------------
+# scikit-build-core configuration
+# ---------------------------------------------------------------------------
+# Refs:
+#   - https://scikit-build-core.readthedocs.io/en/latest/configuration.html
+#   - ADR 0006 (propagation algorithm; algorithm-agnostic posture)
+#   - scoring/propagator/README.md (local-dev setup)
+[tool.scikit-build]
+# Pin the CMake floor so CI fails fast if a runner is too old.
+cmake.version = ">=3.22"
+# Out-of-source build dir, isolated per wheel tag so debug + release
+# coexist without conflicting object files.
+build-dir = "build/{wheel_tag}"
+# Release by default; the `debug` CMake preset (Task 4.1.8) flips this
+# locally via `--config Debug` for the ASan/UBSan run.
+cmake.build-type = "Release"
+# Pull pybind11 from the vendored submodule (Task 4.1.6) rather than the
+# PyPI wheel so the C++ side and Python side track the same version.
+cmake.args = ["-Dpybind11_DIR=${CMAKE_SOURCE_DIR}/external/pybind11/share/cmake/pybind11"]
+# Re-run CMake configure when these files change.
+sdist.include = [
+    "CMakeLists.txt",
+    "CMakePresets.json",
+    "include/**/*.h",
+    "src/**/*.cc",
+    "src/**/*.h",
+    "bindings/**/*.cc",
+    "bindings/**/*.h",
+    "external/pybind11/**",
+]
+sdist.exclude = [
+    "build/**",
+    "tests/**",
+    "bench/**",
+    "reference/**",  # ships via the root `streetsense` wheel (hatchling)
+]
