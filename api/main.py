@@ -39,8 +39,7 @@ log = structlog.get_logger(__name__)
 # Dev-friendly default: any localhost origin. Production tightens via
 # STREETSENSE_CORS_ORIGINS=https://streetsense.example,https://admin.streetsense.example
 _DEFAULT_CORS_ORIGINS = (
-    "http://localhost:5173,http://127.0.0.1:5173,"
-    "http://localhost:4173,http://127.0.0.1:4173"
+    "http://localhost:5173,http://127.0.0.1:5173,http://localhost:4173,http://127.0.0.1:4173"
 )
 
 

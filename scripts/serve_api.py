@@ -55,9 +55,7 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default=os.environ.get("UVICORN_HOST", "0.0.0.0"))
-    parser.add_argument(
-        "--port", type=int, default=int(os.environ.get("UVICORN_PORT", "8000"))
-    )
+    parser.add_argument("--port", type=int, default=int(os.environ.get("UVICORN_PORT", "8000")))
     parser.add_argument(
         "--reload",
         action="store_true",
