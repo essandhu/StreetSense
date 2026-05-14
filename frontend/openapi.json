@@ -2,14 +2,16 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StreetSense API",
-    "version": "0.1.0"
+    "version": "2.0.0"
   },
   "paths": {
     "/segments/{segment_id}": {
       "get": {
-        "tags": ["segments"],
+        "tags": [
+          "segments"
+        ],
         "summary": "Get Segment",
-        "description": "Return the per-segment detail payload.\n\nPhase 1: `risk_stub` is always True. The shape is stable across phases \u2014\nPhase 2/3/4 fill in real values without breaking changes.",
+        "description": "Return the per-segment detail payload.\n\nPer-sub-score `is_stub` flags expose which scorers are real:\nglare flips to false in Phase 2; the other three remain true.",
         "operationId": "get_segment_segments__segment_id__get",
         "parameters": [
           {
@@ -21,6 +23,25 @@
               "format": "uuid",
               "title": "Segment Id"
             }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional ISO-8601 UTC instant. Snaps to the nearest persisted hourly sample in segment_scores. Omitted \u21d2 most recent score row.",
+              "title": "T"
+            },
+            "description": "Optional ISO-8601 UTC instant. Snaps to the nearest persisted hourly sample in segment_scores. Omitted \u21d2 most recent score row."
           }
         ],
         "responses": {
@@ -49,7 +70,9 @@
     },
     "/admin/freshness": {
       "get": {
-        "tags": ["admin"],
+        "tags": [
+          "admin"
+        ],
         "summary": "Freshness",
         "operationId": "freshness_admin_freshness_get",
         "responses": {
@@ -68,7 +91,9 @@
     },
     "/health": {
       "get": {
-        "tags": ["meta"],
+        "tags": [
+          "meta"
+        ],
         "summary": "Health",
         "operationId": "health_health_get",
         "responses": {
@@ -117,7 +142,10 @@
           }
         },
         "type": "object",
-        "required": ["name", "last_ingested_at"],
+        "required": [
+          "name",
+          "last_ingested_at"
+        ],
         "title": "FreshnessEntry",
         "description": "One row of `/admin/freshness`."
       },
@@ -137,7 +165,10 @@
           }
         },
         "type": "object",
-        "required": ["sources", "server_time"],
+        "required": [
+          "sources",
+          "server_time"
+        ],
         "title": "FreshnessReport",
         "description": "Response shape for `/admin/freshness`.\n\nA *list* (wrapped) \u2014 not a single object \u2014 so Phase 3 can register\nmultiple data sources (imagery providers, incident feeds) without a\nbreaking API change."
       },
@@ -175,7 +206,7 @@
           "composite_risk": {
             "type": "number",
             "title": "Composite Risk",
-            "description": "Composite risk in [0, 1]. Phase 1: stub. See risk_stub."
+            "description": "Composite risk in [0, 1]. Phase 2: equal to the glare value (the only real sub-score). Phase 4 ships the weighted composite."
           },
           "sub_scores": {
             "$ref": "#/components/schemas/SubScores"
@@ -183,12 +214,7 @@
           "confidence": {
             "type": "number",
             "title": "Confidence",
-            "description": "Confidence in [0, 1]. Phase 1: stub (0.0). Real values arrive Phase 4."
-          },
-          "risk_stub": {
-            "type": "boolean",
-            "title": "Risk Stub",
-            "description": "True if composite_risk / sub_scores are stub values. Consumers must check this \u2014 Phase 1 always returns true."
+            "description": "Confidence in [0, 1]. Phase 2: glare's confidence (placeholder 1.0)."
           },
           "attrs": {
             "additionalProperties": {
@@ -205,33 +231,60 @@
           "osm_way_id",
           "composite_risk",
           "sub_scores",
-          "confidence",
-          "risk_stub"
+          "confidence"
         ],
         "title": "SegmentDetail",
-        "description": "Per-segment detail payload returned by GET /segments/{id}."
+        "description": "Per-segment detail payload returned by GET /segments/{id}.\n\nPhase 2: top-level `risk_stub` flag removed; per-sub-score\n`is_stub` flags inside `sub_scores` replace it."
+      },
+      "SubScore": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Value",
+            "description": "Risk in [0, 1]. Higher = worse."
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "is_stub": {
+            "type": "boolean",
+            "title": "Is Stub",
+            "description": "True if the value is a stub (no real scorer for this sub-score in this phase). Consumers must check this \u2014 Phase 2 carries is_stub=false only for glare_exposure."
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Metadata",
+            "description": "Scorer-specific provenance (e.g., sun_azimuth_deg / sun_elevation_deg for glare). Safe to add fields without breaking consumers."
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "confidence",
+          "is_stub"
+        ],
+        "title": "SubScore",
+        "description": "One sub-score's per-segment, per-timestamp output as exposed at\nthe API boundary.\n\nMirrors `scoring.interface.SubScoreResult` but lives in `api/` so\nthe API can evolve its serialization independently if needed."
       },
       "SubScores": {
         "properties": {
           "lane_marking_quality": {
-            "type": "number",
-            "title": "Lane Marking Quality",
-            "description": "Lane marking degradation risk in [0, 1]. Higher = worse."
+            "$ref": "#/components/schemas/SubScore"
           },
           "glare_exposure": {
-            "type": "number",
-            "title": "Glare Exposure",
-            "description": "Sun-glare exposure risk in [0, 1] for the configured time window."
+            "$ref": "#/components/schemas/SubScore"
           },
           "junction_complexity": {
-            "type": "number",
-            "title": "Junction Complexity",
-            "description": "Junction topology complexity in [0, 1]. Higher = more complex."
+            "$ref": "#/components/schemas/SubScore"
           },
           "historical_correlation": {
-            "type": "number",
-            "title": "Historical Correlation",
-            "description": "Correlation with historical incident clusters in [0, 1]."
+            "$ref": "#/components/schemas/SubScore"
           }
         },
         "type": "object",
@@ -277,7 +330,11 @@
           }
         },
         "type": "object",
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError"
       }
     }

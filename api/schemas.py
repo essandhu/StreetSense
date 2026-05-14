@@ -1,8 +1,11 @@
 """Pydantic models for the API surface.
 
 Every model crossing a process boundary is Pydantic. Sub-score fields are
-*always* present in any composite-risk response — Phase 1 fills them with
-deterministic stub values, but the shape is contract.
+*always* present in any composite-risk response — Phase 2 ships glare as
+the first real sub-score; the other three carry ``is_stub: true`` until
+later phases. Phase 1's top-level ``risk_stub: bool`` is **removed**:
+per-sub-score ``is_stub`` flags replace it. This is the breaking API
+change that bumps the OpenAPI ``info.version`` from 1.0 to 2.0.
 
 Branded UUID types: `SegmentId`, `RunId`. They are typed `UUID` at runtime;
 the type alias gives a strong handle when reading IDE / mypy output.
@@ -11,13 +14,40 @@ the type alias gives a strong handle when reading IDE / mypy output.
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import NewType
+from typing import Any, NewType
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 SegmentId = NewType("SegmentId", UUID)
 RunId = NewType("RunId", UUID)
+
+
+class SubScore(BaseModel):
+    """One sub-score's per-segment, per-timestamp output as exposed at
+    the API boundary.
+
+    Mirrors `scoring.interface.SubScoreResult` but lives in `api/` so
+    the API can evolve its serialization independently if needed."""
+
+    value: float = Field(..., ge=0.0, le=1.0, description="Risk in [0, 1]. Higher = worse.")
+    confidence: float = Field(..., ge=0.0, le=1.0)
+    is_stub: bool = Field(
+        ...,
+        description=(
+            "True if the value is a stub (no real scorer for this sub-score "
+            "in this phase). Consumers must check this — Phase 2 carries "
+            "is_stub=false only for glare_exposure."
+        ),
+    )
+    metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Scorer-specific provenance (e.g., sun_azimuth_deg / "
+            "sun_elevation_deg for glare). Safe to add fields without "
+            "breaking consumers."
+        ),
+    )
 
 
 class SubScores(BaseModel):
@@ -29,39 +59,32 @@ class SubScores(BaseModel):
     in Phase 3+.
     """
 
-    lane_marking_quality: float = Field(
-        ..., description="Lane marking degradation risk in [0, 1]. Higher = worse."
-    )
-    glare_exposure: float = Field(
-        ..., description="Sun-glare exposure risk in [0, 1] for the configured time window."
-    )
-    junction_complexity: float = Field(
-        ..., description="Junction topology complexity in [0, 1]. Higher = more complex."
-    )
-    historical_correlation: float = Field(
-        ..., description="Correlation with historical incident clusters in [0, 1]."
-    )
+    lane_marking_quality: SubScore
+    glare_exposure: SubScore
+    junction_complexity: SubScore
+    historical_correlation: SubScore
 
 
 class SegmentDetail(BaseModel):
-    """Per-segment detail payload returned by GET /segments/{id}."""
+    """Per-segment detail payload returned by GET /segments/{id}.
+
+    Phase 2: top-level `risk_stub` flag removed; per-sub-score
+    `is_stub` flags inside `sub_scores` replace it.
+    """
 
     segment_id: UUID
     osm_way_id: int | None
     composite_risk: float = Field(
-        ..., description="Composite risk in [0, 1]. Phase 1: stub. See risk_stub."
+        ...,
+        description=(
+            "Composite risk in [0, 1]. Phase 2: equal to the glare value "
+            "(the only real sub-score). Phase 4 ships the weighted composite."
+        ),
     )
     sub_scores: SubScores
     confidence: float = Field(
         ...,
-        description="Confidence in [0, 1]. Phase 1: stub (0.0). Real values arrive Phase 4.",
-    )
-    risk_stub: bool = Field(
-        ...,
-        description=(
-            "True if composite_risk / sub_scores are stub values. "
-            "Consumers must check this — Phase 1 always returns true."
-        ),
+        description="Confidence in [0, 1]. Phase 2: glare's confidence (placeholder 1.0).",
     )
     attrs: dict[str, str] = Field(default_factory=dict, description="Selected OSM attributes.")
 
