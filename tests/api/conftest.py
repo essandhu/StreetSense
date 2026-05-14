@@ -60,9 +60,12 @@ def seed_segment(owner_conn: psycopg.Connection[Any]) -> UUID:
 def seed_data_sources(owner_conn: psycopg.Connection[Any]) -> None:
     """Insert data_sources rows for the freshness endpoint.
 
-    Phase 2 adds `solar_position` to the registry (migration 0005); the
-    `/admin/freshness` endpoint surfaces it alongside `osm` and the
-    Phase-3 placeholder `imagery`.
+    Phase 1: `osm`.
+    Phase 2: `solar_position` (compute source — migration 0005).
+    Phase 3: `imagery` (migration 0009) with real metadata; and
+    `perception_model` once `make seed-model` has run.
+
+    The Phase 3 freshness endpoint surfaces all four.
     """
     with owner_conn.cursor() as cur:
         cur.execute("DELETE FROM data_sources")
@@ -70,9 +73,14 @@ def seed_data_sources(owner_conn: psycopg.Connection[Any]) -> None:
             """
             INSERT INTO data_sources (name, last_ingested_at, metadata)
             VALUES
-                ('osm',            now() - interval '1 hour', '{"source_url": "file://osm"}'::jsonb),
-                ('imagery',        NULL,                       '{}'::jsonb),
-                ('solar_position', now(),                      '{"kind": "compute", "library": "pvlib", "model": "nrel-spa"}'::jsonb)
+                ('osm',              now() - interval '1 hour',
+                 '{"source_url": "file://osm"}'::jsonb),
+                ('imagery',          now() - interval '5 minutes',
+                 '{"kind": "fetch", "provider": "mapillary", "adr": "0005-imagery-provider", "license": "CC-BY-SA"}'::jsonb),
+                ('solar_position',   now(),
+                 '{"kind": "compute", "library": "pvlib", "model": "nrel-spa"}'::jsonb),
+                ('perception_model', now() - interval '10 minutes',
+                 '{"kind": "model", "perception_model_version": "lane-marking-standin-deadbeef", "object_key": "lane-marking-standin-deadbeef/lane-marking-standin.onnx", "bucket": "streetsense-models"}'::jsonb)
             """
         )
     owner_conn.commit()

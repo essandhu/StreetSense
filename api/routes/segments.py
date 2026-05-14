@@ -1,28 +1,59 @@
-"""GET /segments/{id} — per-segment detail with per-sub-score is_stub flags.
+"""GET /segments/{id} — per-segment detail with assembled confidence + imagery refs.
 
-Phase 2 changes (breaking):
+Phase 3 changes (breaking, API 3.0):
 
-- Top-level ``risk_stub`` flag is removed. Per-sub-score ``is_stub``
-  flags inside ``sub_scores`` replace it.
-- Accepts an optional ``t`` ISO-8601 UTC query parameter and snaps to
-  the nearest persisted hourly sample in ``segment_scores``.
-- Returns the glare scorer's real value plus its azimuth / elevation
-  metadata in ``sub_scores.glare_exposure``.
+- ``confidence`` reshapes from scalar ``float`` to a
+  ``ConfidenceIndicator`` object (``{value, limiter}``) — see spec
+  Tech Note 4 and ``api.confidence``.
+- New ``imagery`` field: an array of ``ImageryReference``s with
+  pre-signed MinIO URLs (5-minute TTL) for source images that backed
+  the segment's perception sub-score.
+- ``lane_marking_quality`` ships its real ``model_uncertainty`` in
+  ``metadata`` (the perception scorer's per-segment aggregate from
+  spec Tech Note 2).
 """
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+import os
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
+from minio import Minio
 
+from api.confidence import ConfidenceIndicator as DomainConfidence
+from api.confidence import assemble, coverage, freshness
 from api.db import conn
-from api.schemas import SegmentDetail, SubScore, SubScores
+from api.schemas import (
+    ConfidenceIndicator,
+    ImageryReference,
+    SegmentDetail,
+    SubScore,
+    SubScores,
+)
 from api.scoring_stub import stub_risk
 
 router = APIRouter(prefix="/segments", tags=["segments"])
+
+
+# --- MinIO client (module-level: cheap to share; thread-safe) -----------
+_MINIO_BUCKET_IMAGERY = "streetsense-imagery"
+_PRESIGNED_URL_TTL_SECONDS = 5 * 60  # 5 minutes per spec Phase 3.5.5
+# Imagery sampling cadence target: matches ingestion default (5 samples / segment).
+# Used by the confidence-assembly `coverage` input.
+_DEFAULT_IMAGERY_TARGET_SAMPLES = 5
+
+
+def _minio_client() -> Minio:
+    """Construct a MinIO client from env. Cheap; safe to call per request."""
+    return Minio(
+        os.environ.get("MINIO_ENDPOINT", "localhost:9000"),
+        access_key=os.environ.get("MINIO_ROOT_USER", "streetsense"),
+        secret_key=os.environ.get("MINIO_ROOT_PASSWORD", "streetsense"),
+        secure=False,
+    )
 
 
 def _build_subscore(
@@ -37,6 +68,10 @@ def _build_subscore(
         is_stub=is_stub,
         metadata=metadata or {},
     )
+
+
+def _to_pydantic_confidence(domain: DomainConfidence) -> ConfidenceIndicator:
+    return ConfidenceIndicator(value=domain.value, limiter=domain.limiter)
 
 
 _SELECT_SNAPPED_SCORE_SQL = """
@@ -76,6 +111,82 @@ LEFT JOIN LATERAL (
 WHERE rs.id = %(id)s
 """
 
+_SELECT_IMAGERY_SQL = """
+SELECT
+    provider,
+    provider_image_id,
+    capture_date,
+    heading_deg,
+    camera_params,
+    object_key
+FROM segment_imagery
+WHERE segment_id = %(id)s
+ORDER BY sample_index
+"""
+
+
+async def _load_imagery_rows(segment_id: UUID) -> list[dict[str, Any]]:
+    async with conn() as c, c.cursor() as cur:
+        await cur.execute(_SELECT_IMAGERY_SQL, {"id": segment_id})
+        rows = await cur.fetchall()
+    return [
+        {
+            "provider": r[0],
+            "provider_image_id": r[1],
+            "capture_date": r[2],
+            "heading_deg": r[3],
+            "camera_params": r[4] or {},
+            "object_key": r[5],
+        }
+        for r in rows
+    ]
+
+
+def _build_imagery_references(rows: list[dict[str, Any]]) -> list[ImageryReference]:
+    """Compute pre-signed MinIO URLs per row and pack into the API shape."""
+    if not rows:
+        return []
+    from datetime import timedelta
+
+    client = _minio_client()
+    refs: list[ImageryReference] = []
+    for row in rows:
+        url = client.presigned_get_object(
+            bucket_name=_MINIO_BUCKET_IMAGERY,
+            object_name=row["object_key"],
+            expires=timedelta(seconds=_PRESIGNED_URL_TTL_SECONDS),
+        )
+        refs.append(
+            ImageryReference(
+                url=url,
+                provider=row["provider"],
+                capture_date=row["capture_date"],
+                heading_deg=float(row["heading_deg"]),
+                camera_params=row["camera_params"] or {},
+            )
+        )
+    return refs
+
+
+def _confidence_inputs(
+    imagery_rows: list[dict[str, Any]],
+    model_uncertainty: float,
+    *,
+    now: date,
+    target_samples: int = _DEFAULT_IMAGERY_TARGET_SAMPLES,
+) -> DomainConfidence:
+    """Assemble the confidence indicator from imagery + model-uncertainty inputs."""
+    if not imagery_rows:
+        # No imagery → coverage drives the indicator to zero, limiter
+        # is 'coverage'. Freshness and model are clamped to the
+        # neutral end so they don't accidentally win the tie-break.
+        return assemble(freshness_value=1.0, coverage_value=0.0, model_uncertainty=1.0)
+    capture_dates = [r["capture_date"] for r in imagery_rows]
+    capture_max = max(capture_dates)
+    fresh = freshness(capture_max, now=now)
+    cov = coverage(actual_samples=len(imagery_rows), target_samples=target_samples)
+    return assemble(freshness_value=fresh, coverage_value=cov, model_uncertainty=model_uncertainty)
+
 
 @router.get("/{segment_id}", response_model=SegmentDetail)
 async def get_segment(
@@ -88,11 +199,7 @@ async def get_segment(
         ),
     ),
 ) -> SegmentDetail:
-    """Return the per-segment detail payload.
-
-    Per-sub-score `is_stub` flags expose which scorers are real:
-    glare flips to false in Phase 2; the other three remain true.
-    """
+    """Return the per-segment detail payload (API 3.0)."""
     t_param: datetime | None = None
     if t is not None:
         t_param = t if t.tzinfo is not None else t.replace(tzinfo=UTC)
@@ -113,7 +220,7 @@ async def get_segment(
         sub_glare,
         sub_junction,
         sub_historical,
-        confidence,
+        scalar_confidence,
         is_stub_lane,
         is_stub_glare,
         is_stub_junction,
@@ -121,11 +228,39 @@ async def get_segment(
         scoring_run_timestamp,
     ) = row
 
+    # Load imagery rows once. Used both for the response `imagery`
+    # array and as input to the confidence assembly.
+    imagery_rows = await _load_imagery_rows(seg_id)
+    imagery_refs = _build_imagery_references(imagery_rows)
+
+    # Model uncertainty: the perception scorer's metadata isn't
+    # persisted per segment_scores row (would bloat the table). The
+    # scalar confidence stored on the row is the min across
+    # per-sub-score confidences; perception's confidence is
+    # `1 - model_uncertainty`. When perception is the limiter we can
+    # back out uncertainty from the stored confidence. When perception
+    # is not the limiter we conservatively use the same stored
+    # confidence — slight over-statement of uncertainty when glare is
+    # the limiter, acceptable for Phase 3 (Phase 4 carries
+    # `model_uncertainty` per row in its own column if profiling shows
+    # this is too coarse).
+    if scalar_confidence is None:
+        model_uncertainty = 1.0
+    else:
+        model_uncertainty = max(0.0, 1.0 - float(scalar_confidence))
+
+    confidence_domain = _confidence_inputs(
+        imagery_rows=imagery_rows,
+        model_uncertainty=model_uncertainty,
+        now=datetime.now(UTC).date(),
+    )
+
     if composite_risk is None:
-        # No `segment_scores` row exists for this segment yet (e.g., the
-        # scoring run hasn't been executed since this segment was ingested).
-        # Fall back to the Phase 1 stub so the endpoint stays useful for
-        # newly-ingested segments before the next scoring run.
+        # No `segment_scores` row exists for this segment yet (e.g.,
+        # the scoring run hasn't been executed since this segment was
+        # ingested). Fall back to the Phase 1 stub so the endpoint
+        # stays useful for newly-ingested segments before the next
+        # scoring run.
         stub = stub_risk(seg_id)
         return SegmentDetail(
             segment_id=seg_id,
@@ -145,16 +280,21 @@ async def get_segment(
                     stub.sub_scores.historical_correlation, is_stub=True, confidence=0.0
                 ),
             ),
-            confidence=stub.confidence,
+            confidence=_to_pydantic_confidence(confidence_domain),
+            imagery=imagery_refs,
             attrs=attrs or {},
         )
 
-    # Recompute glare metadata for the returned row. The scorer is
-    # pure-functional and cheap; this avoids persisting the metadata
-    # JSON in storage just to surface it at the API.
     glare_metadata: dict[str, Any] = {}
     if not is_stub_glare and scoring_run_timestamp is not None:
         glare_metadata = await _compute_glare_metadata(seg_id, scoring_run_timestamp)
+
+    lane_metadata: dict[str, Any] = {}
+    if not is_stub_lane:
+        lane_metadata = {
+            "image_count": len(imagery_rows),
+            "model_uncertainty": model_uncertainty,
+        }
 
     return SegmentDetail(
         segment_id=seg_id,
@@ -164,12 +304,13 @@ async def get_segment(
             lane_marking_quality=_build_subscore(
                 None if sub_lane is None else float(sub_lane),
                 is_stub=bool(is_stub_lane),
-                confidence=0.0,
+                confidence=(float(scalar_confidence) if scalar_confidence is not None else 0.0),
+                metadata=lane_metadata,
             ),
             glare_exposure=_build_subscore(
                 None if sub_glare is None else float(sub_glare),
                 is_stub=bool(is_stub_glare),
-                confidence=float(confidence) if confidence is not None else 0.0,
+                confidence=(float(scalar_confidence) if scalar_confidence is not None else 0.0),
                 metadata=glare_metadata,
             ),
             junction_complexity=_build_subscore(
@@ -183,19 +324,17 @@ async def get_segment(
                 confidence=0.0,
             ),
         ),
-        confidence=float(confidence) if confidence is not None else 0.0,
+        confidence=_to_pydantic_confidence(confidence_domain),
+        imagery=imagery_refs,
         attrs=attrs or {},
     )
 
 
 async def _compute_glare_metadata(segment_id: UUID, at: datetime) -> dict[str, Any]:
-    """Compute the glare metadata (sun_azimuth_deg, sun_elevation_deg) for
-    the segment's representative point at ``at``.
+    """Recompute sun_azimuth_deg / sun_elevation_deg for the segment at ``at``.
 
-    Done here, not in storage, because (a) the underlying geometry might
-    rotate between scoring runs (a re-ingested OSM way), and (b) it
-    keeps `segment_scores` small. The scorer is pure-functional and
-    fast enough at API latency.
+    Pure-functional and cheap; cheaper than persisting the metadata
+    JSON. The scorer is the source of truth for the math.
     """
     from scoring.environmental.glare import solar_position
 

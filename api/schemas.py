@@ -1,20 +1,25 @@
 """Pydantic models for the API surface.
 
-Every model crossing a process boundary is Pydantic. Sub-score fields are
-*always* present in any composite-risk response — Phase 2 ships glare as
-the first real sub-score; the other three carry ``is_stub: true`` until
-later phases. Phase 1's top-level ``risk_stub: bool`` is **removed**:
-per-sub-score ``is_stub`` flags replace it. This is the breaking API
-change that bumps the OpenAPI ``info.version`` from 1.0 to 2.0.
+Every model crossing a process boundary is Pydantic.
 
-Branded UUID types: `SegmentId`, `RunId`. They are typed `UUID` at runtime;
-the type alias gives a strong handle when reading IDE / mypy output.
+API version history:
+
+- 1.0 (Phase 1): per-segment composite + a single ``risk_stub`` flag.
+- 2.0 (Phase 2): per-sub-score ``is_stub`` replaces the top-level flag;
+  scalar ``confidence`` populated by the glare scorer.
+- 3.0 (Phase 3, **breaking**): ``confidence`` reshapes from a scalar
+  float to a ``ConfidenceIndicator`` object so the UI can label which
+  input is the limiter; a new ``imagery`` list ships in
+  ``SegmentDetail`` carrying pre-signed MinIO URLs for source imagery.
+
+Branded UUID types: `SegmentId`, `RunId`. Typed ``UUID`` at runtime; the
+type alias gives a strong handle when reading IDE / mypy output.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime
-from typing import Any, NewType
+from typing import Any, Literal, NewType
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -65,11 +70,41 @@ class SubScores(BaseModel):
     historical_correlation: SubScore
 
 
+class ConfidenceIndicator(BaseModel):
+    """Per-segment confidence + the input that limited it (spec Tech Note 4).
+
+    ``value`` is the min-rule combination of ``freshness``, ``coverage``,
+    and ``1 - model_uncertainty``. ``limiter`` names whichever of the
+    three drove the value lowest.
+    """
+
+    value: float = Field(..., ge=0.0, le=1.0)
+    limiter: Literal["freshness", "coverage", "model"]
+
+
+class ImageryReference(BaseModel):
+    """A pre-signed pointer to one piece of source imagery."""
+
+    url: str = Field(
+        ...,
+        description=(
+            "Pre-signed MinIO URL with a short TTL. Clients fetch the bytes "
+            "directly from MinIO rather than proxying through the API."
+        ),
+    )
+    provider: str
+    capture_date: date
+    heading_deg: float
+    camera_params: dict[str, Any] = Field(default_factory=dict)
+
+
 class SegmentDetail(BaseModel):
     """Per-segment detail payload returned by GET /segments/{id}.
 
-    Phase 2: top-level `risk_stub` flag removed; per-sub-score
-    `is_stub` flags inside `sub_scores` replace it.
+    Phase 3 (API 3.0, breaking): ``confidence`` is a
+    ``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries
+    pre-signed URLs for the source images that backed
+    ``sub_scores.lane_marking_quality``.
     """
 
     segment_id: UUID
@@ -77,14 +112,19 @@ class SegmentDetail(BaseModel):
     composite_risk: float = Field(
         ...,
         description=(
-            "Composite risk in [0, 1]. Phase 2: equal to the glare value "
-            "(the only real sub-score). Phase 4 ships the weighted composite."
+            "Composite risk in [0, 1]. Phase 3: mean of real sub-scores "
+            "(glare + lane_marking). Phase 4 ships the weighted composite "
+            "from the propagator."
         ),
     )
     sub_scores: SubScores
-    confidence: float = Field(
-        ...,
-        description="Confidence in [0, 1]. Phase 2: glare's confidence (placeholder 1.0).",
+    confidence: ConfidenceIndicator
+    imagery: list[ImageryReference] = Field(
+        default_factory=list,
+        description=(
+            "Source imagery references backing this segment's perception "
+            "sub-score. Empty when no imagery is available."
+        ),
     )
     attrs: dict[str, str] = Field(default_factory=dict, description="Selected OSM attributes.")
 

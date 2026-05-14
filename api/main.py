@@ -39,9 +39,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="StreetSense API",
-        # Phase 2: breaking change — top-level `risk_stub` removed, per-sub-score
-        # `is_stub` flags added inside `sub_scores`. Tile endpoint accepts `t`.
-        version="2.0.0",
+        # Phase 3 (3.0, breaking): `confidence` reshapes from a scalar
+        # float to a `ConfidenceIndicator` object so the UI can label
+        # the limiting input; `imagery` ships in `SegmentDetail` with
+        # pre-signed MinIO URLs.
+        version="3.0.0",
         lifespan=_lifespan,
     )
     app.include_router(segments.router)
