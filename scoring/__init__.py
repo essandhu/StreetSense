@@ -14,6 +14,11 @@ from __future__ import annotations
 # Phase 4 does. The sentinel is a deliberate, non-empty marker so the
 # schema's NOT NULL constraint stays satisfied without silently claiming
 # a propagator ran.
+#
+# Phase 3 retains this exact sentinel value (no rename to ``"none-phase-3"``).
+# The string identifies *which version of the codebase* introduced it
+# rather than which scoring run last touched the row; renaming it on every
+# phase would be churn that breaks regression queries spanning runs.
 PHASE_2_PROPAGATION_SENTINEL = "none-phase-2"
 
 
