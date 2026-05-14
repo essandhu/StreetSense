@@ -11,7 +11,7 @@ job module + vcrpy-recorded integration tests.
 
 Phase 4.1: empty scaffold; the protocol lands in Task 4.5.2, the
 concrete adapter in 4.5.5, and the ingestion job in 4.5.6 — see
-``conductor/tracks/phase-4-propagator/plan.md`` Tasks 4.5.1–4.5.7.
+``conductor/tracks/phase-4-propagator/plan.md`` Tasks 4.5.1-4.5.7.
 """
 
 from __future__ import annotations

@@ -13,7 +13,7 @@ to — so the scoring-run orchestration in ``scoring.run`` adds junction
 complexity by configuration (extension point 1).
 
 Phase 4.1: empty scaffold; real implementation lands in Phase 4.5 — see
-``conductor/tracks/phase-4-propagator/plan.md`` Tasks 4.5.8–4.5.10.
+``conductor/tracks/phase-4-propagator/plan.md`` Tasks 4.5.8-4.5.10.
 """
 
 from __future__ import annotations

@@ -16,7 +16,7 @@ The incident data is provided by
 see ``docs/adr/0007-incident-dataset.md``).
 
 Phase 4.1: empty scaffold; real implementation lands in Phase 4.5.13 —
-see ``conductor/tracks/phase-4-propagator/plan.md`` Tasks 4.5.11–4.5.13.
+see ``conductor/tracks/phase-4-propagator/plan.md`` Tasks 4.5.11-4.5.13.
 """
 
 from __future__ import annotations
