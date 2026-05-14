@@ -18,7 +18,7 @@
 #   scoring-run   Trigger a scoring run end-to-end. (Phase 1 stub.)
 #   test          Run all tests (Python + frontend unit).
 #   lint          Run all linters/formatters/typecheckers in check mode.
-#   db-up         Start Postgres + PostGIS.
+#   db-up         Start the data plane (Postgres + PostGIS + MinIO).
 #   db-down       Stop and remove the data plane.
 #   migrate       Apply Alembic migrations.
 #   clean         Remove caches and build artifacts.
@@ -37,7 +37,7 @@ help:
 	@printf '  make scoring-run        Trigger a scoring run (Phase 1: stub)\n'
 	@printf '  make test               Run Python + frontend unit tests\n'
 	@printf '  make lint               Lint/format-check/typecheck everything\n'
-	@printf '  make db-up              Start Postgres + PostGIS\n'
+	@printf '  make db-up              Start data plane (Postgres + PostGIS + MinIO)\n'
 	@printf '  make db-down            Stop the data plane\n'
 	@printf '  make migrate            Apply Alembic migrations\n'
 	@printf '  make clean              Remove caches and build artifacts\n'

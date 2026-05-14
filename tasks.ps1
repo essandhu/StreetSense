@@ -29,7 +29,7 @@ Targets:
   .\tasks.ps1 scoring-run                   Trigger a scoring run (Phase 1: stub)
   .\tasks.ps1 test                          Run Python + frontend unit tests
   .\tasks.ps1 lint                          Lint/format-check/typecheck everything
-  .\tasks.ps1 db-up                         Start Postgres + PostGIS
+  .\tasks.ps1 db-up                         Start data plane (Postgres + PostGIS + MinIO)
   .\tasks.ps1 db-down                       Stop the data plane
   .\tasks.ps1 migrate                       Apply Alembic migrations
   .\tasks.ps1 clean                         Remove caches and build artifacts

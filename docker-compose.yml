@@ -1,7 +1,9 @@
 # StreetSense local data plane.
 #
-# Phase 1: Postgres 16 + PostGIS 3.4 only. MinIO is added in Phase 3 when
-# imagery ingestion lands; do not preempt it here.
+# Phase 1: Postgres 16 + PostGIS 3.4.
+# Phase 3: MinIO (S3-compatible object store) for imagery bytes and the
+#          cached perception-model ONNX artifact. Two buckets are seeded
+#          on first boot by a one-shot init container.
 
 services:
   postgres:
@@ -28,6 +30,51 @@ services:
       start_period: 10s
     restart: unless-stopped
 
+  # S3-compatible object store. Phase 3 stores Mapillary imagery bytes
+  # under `streetsense-imagery/` and the perception-model ONNX artifact
+  # under `streetsense-models/`. Pinned to a SHA so local + future-CI
+  # behavior stays deterministic. AWS S3 replaces MinIO in Phase 5.
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    container_name: streetsense-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-streetsense}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-streetsense}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  # One-shot bucket seeder. Idempotent: `mb --ignore-existing` returns
+  # success when buckets already exist, so re-running `docker compose up`
+  # does not surprise the user.
+  minio-init:
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    container_name: streetsense-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-streetsense}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-streetsense}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb --ignore-existing local/streetsense-imagery &&
+      mc mb --ignore-existing local/streetsense-models &&
+      echo 'streetsense-imagery and streetsense-models ready'
+      "
+    restart: "no"
+
   # Vector tile server (ADR 0002). Connects as the app role so it inherits
   # the same least-privilege grants as FastAPI (SELECT only on the
   # publishing view).
@@ -49,3 +96,5 @@ services:
 volumes:
   pgdata:
     name: streetsense-pgdata
+  miniodata:
+    name: streetsense-miniodata
