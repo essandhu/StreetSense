@@ -1,0 +1,72 @@
+# StreetSense C++ static analysis — clang-tidy configuration.
+#
+# Applies to: scoring/propagator/ (the only C++ tree in the repo).
+# Enforced in CI by `clang-tidy --warnings-as-errors='*'` on every PR
+# touching scoring/propagator/**.
+#
+# Refs:
+#   - conductor/code_styleguides/cpp.md
+#   - CLAUDE.md §"C++"
+#   - plan.md Task 4.1.9 (this file) and Task 4.2.9 (suppression policy)
+---
+Checks: >
+  -*,
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+
+  # Suppress checks that conflict with Boost.Graph idioms or are noise:
+  -modernize-use-trailing-return-type,
+  -readability-named-parameter,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-type-vararg,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -modernize-use-nodiscard,
+  # Boost.Graph uses tie() and other patterns clang-tidy flags as deprecated
+  # but which remain canonical for some BGL APIs (per plan.md Task 4.2.9).
+  -modernize-deprecated-headers,
+  # GoogleTest macros trip several readability checks; suppress them in
+  # test files via per-file inline NOLINT in Phase 4.2.
+
+WarningsAsErrors: '*'
+HeaderFilterRegex: 'scoring/propagator/(include|src|bindings)/.*\.h$'
+
+CheckOptions:
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.ParameterCase
+    value: lower_case
+  - key: readability-identifier-naming.MemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: _
+  - key: readability-identifier-naming.ProtectedMemberSuffix
+    value: _
+  - key: readability-identifier-naming.ConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.ConstantPrefix
+    value: k
+  - key: readability-identifier-naming.MacroDefinitionCase
+    value: UPPER_CASE
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
+  - key: cppcoreguidelines-special-member-functions.AllowMissingMoveFunctions
+    value: 'true'
+...
