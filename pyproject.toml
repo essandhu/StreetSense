@@ -82,6 +82,9 @@ target-version = "py312"
 line-length = 100
 extend-exclude = [
     "frontend",
+    # Vendored third-party submodule (Phase 4.1.6) — pybind11 ships its own
+    # pyproject.toml + ruff config that disagrees with this project's selection.
+    "scoring/propagator/external",
     "scoring/propagator/build",
     "node_modules",
     ".venv",
@@ -119,6 +122,9 @@ indent-style = "space"
 python_version = "3.12"
 strict = true
 files = ["api", "scoring", "ingestion"]
+# Vendored third-party submodule (Phase 4.1.6) — pybind11 ships its own
+# tests that don't meet mypy --strict.
+exclude = ["scoring/propagator/external/"]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -151,6 +157,14 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 minversion = "8.0"
 testpaths = ["tests", "api", "scoring", "ingestion"]
+# Skip vendored third-party submodule (Phase 4.1.6) and CMake build dirs.
+norecursedirs = [
+    "scoring/propagator/external",
+    "scoring/propagator/build",
+    ".venv",
+    "node_modules",
+    "frontend",
+]
 python_files = ["test_*.py", "*_test.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
