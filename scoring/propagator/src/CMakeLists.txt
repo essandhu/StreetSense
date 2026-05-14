@@ -6,6 +6,7 @@
 # target.
 
 add_library(propagator_engine STATIC
+    graph.cc
     registry.cc
 )
 
