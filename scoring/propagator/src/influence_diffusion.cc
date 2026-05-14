@@ -128,11 +128,13 @@ public:
 
         if (params.normalize) {
             double max_value = 0.0;
-            for (const auto& [_, value] : uplift) {
+            for (const auto& [node_id, value] : uplift) {
+                static_cast<void>(node_id);
                 max_value = std::max(max_value, value);
             }
             if (max_value > 0.0) {
-                for (auto& [_, value] : uplift) {
+                for (auto& [node_id, value] : uplift) {
+                    static_cast<void>(node_id);
                     value /= max_value;
                 }
             }
@@ -157,11 +159,17 @@ public:
     std::string version() const override { return "0.1.0"; }
 };
 
-// Self-registration at static-initialization time. The (void) cast
-// silences the unused-variable warning for this side-effect-only
-// declaration; the bool's value is the registration result (true on
-// success, false if a duplicate was already present).
-const bool registered_influence_diffusion = []() {
+// Self-registration at static-initialization time. The
+// [[maybe_unused]] attribute silences the unused-variable warning for
+// this side-effect-only declaration; the bool's value is the
+// registration result (true on success, false if a duplicate was
+// already present). clang-tidy flags this pattern under
+// `bugprone-exception-escape` without a justifying comment because
+// the lambda body could theoretically throw -- in practice the
+// registry's register_strategy() is noexcept-safe in steady state
+// (the std::map::emplace below it can throw only on allocation
+// failure, which terminates the program anyway).
+[[maybe_unused]] const bool registered_influence_diffusion = []() {
     return StrategyRegistry::instance().register_strategy(
         "influence-diffusion",
         [] { return std::make_unique<InfluenceDiffusion>(); });

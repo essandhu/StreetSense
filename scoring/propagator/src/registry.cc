@@ -17,8 +17,12 @@ StrategyRegistry& StrategyRegistry::instance() {
 
 bool StrategyRegistry::register_strategy(std::string id, FactoryFn factory) {
     const std::lock_guard<std::mutex> lock(mutex_);
+    // emplace returns (iterator, bool); we only care about the bool.
+    // Using static_cast<void>(...) on the iterator side avoids the
+    // C-style cast that clang-tidy flags under
+    // cppcoreguidelines-pro-type-cstyle-cast.
     const auto [it, inserted] = strategies_.emplace(std::move(id), std::move(factory));
-    (void)it;
+    static_cast<void>(it);
     return inserted;
 }
 
@@ -35,7 +39,10 @@ std::vector<std::string> StrategyRegistry::list_names() const {
     const std::lock_guard<std::mutex> lock(mutex_);
     std::vector<std::string> names;
     names.reserve(strategies_.size());
-    for (const auto& [id, _] : strategies_) {
+    for (const auto& [id, factory] : strategies_) {
+        // factory unused -- structured binding requires naming both members
+        // and `_` trips clang-tidy's readability-identifier-naming check.
+        static_cast<void>(factory);
         names.push_back(id);
     }
     return names;
