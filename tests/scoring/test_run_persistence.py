@@ -285,5 +285,10 @@ class TestEndToEndScoringRun:
             )
             rows = cur.fetchall()
         assert rows == [("1970-01-01", "1970-01-02")]
-        # And the sentinel constant matches what we expect.
-        assert PHASE_2_IMAGERY_WINDOW_SENTINEL == "[1970-01-01,1970-01-02)"
+        # Sentinel constant: Phase 3 changed the type from `str` to
+        # `tuple[date, date]`; the persisted daterange string is now
+        # derived. The tuple form represents a single inclusive day
+        # (1970-01-01); persistence emits the half-open
+        # `[1970-01-01, 1970-01-02)` byte-identical to the Phase 2
+        # string sentinel.
+        assert (date(1970, 1, 1), date(1970, 1, 1)) == PHASE_2_IMAGERY_WINDOW_SENTINEL

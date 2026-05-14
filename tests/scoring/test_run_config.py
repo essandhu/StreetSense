@@ -63,12 +63,18 @@ def test_empty_perception_model_version_rejected() -> None:
         )
 
 
-def test_empty_imagery_capture_window_rejected() -> None:
+def test_inverted_imagery_capture_window_rejected() -> None:
+    """Phase 3 switched the field from `str` to `tuple[date, date]`.
+
+    The validation now catches an inverted window (start > end) instead
+    of an empty string. An empty string can no longer be passed because
+    the type is a tuple.
+    """
     with pytest.raises(ValueError, match="imagery_capture_window"):
         ScoringRunConfig(
             temporal_samples=_samples(),
             osm_snapshot_date=date(2026, 5, 13),
-            imagery_capture_window="",
+            imagery_capture_window=(date(2026, 5, 14), date(2026, 5, 13)),
         )
 
 

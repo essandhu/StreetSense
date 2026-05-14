@@ -3,19 +3,22 @@
 A `ScoringRun` materializes one ``segment_scores`` row per
 (road segment, temporal sample) pair. Each row carries:
 
-- The composite + four sub-scores. In Phase 2, only ``glare`` is real;
-  the other three are stub-zero values, with the matching ``is_stub_*``
-  column set to true.
-- All six reproducibility fields populated (the
-  reproducibility invariant from CLAUDE.md / spec.md). When a real
-  perception model / propagator does not yet exist, documented Phase-2
-  sentinels are written so the NOT NULL constraint stays satisfied
-  without falsely claiming work was done.
+- The composite + four sub-scores. Phase 2 shipped ``glare`` as the
+  first real sub-score; Phase 3 adds ``lane_marking`` (perception);
+  the remaining two stay stubbed until Phase 4 (junction +
+  historical, the propagator's natural pairings).
+- All six reproducibility fields populated (the reproducibility
+  invariant from CLAUDE.md / spec.md). When a real perception model /
+  propagator does not yet exist, documented sentinels are written so
+  the NOT NULL constraint stays satisfied without falsely claiming
+  that work was done.
 
-Extension point 1 (new risk factors) is exercised here for the first
-time: the run accepts any sequence of `SubScorer` implementations,
-indexed by their ``name``. Phase 3 will add a perception scorer to the
-list with no changes to this module.
+Extension point 1 (new risk factors) is exercised here twice now:
+``glare`` (Phase 2) and ``lane_marking`` (Phase 3). The sub-score
+registry below maps a scorer's ``name`` to its ``segment_scores``
+column triplet. Adding a new sub-score in Phase 4 means appending a
+row to ``_SUB_SCORE_REGISTRY`` and supplying a ``SubScorer`` — no
+other changes to this module.
 """
 
 from __future__ import annotations
@@ -33,34 +36,88 @@ import psycopg
 import structlog
 
 from scoring import PHASE_2_PROPAGATION_SENTINEL
-from scoring.interface import ScoringSegment, SubScorer
+from scoring.interface import ScoringSegment, SubScorer, SubScoreResult
 
 log = structlog.get_logger(__name__)
 
 
-# --- Phase 2 sentinels ------------------------------------------------------
-# Each of these is a non-empty value that satisfies the column's
-# NOT NULL constraint without claiming that real data was used.
+# --- Reproducibility sentinels ----------------------------------------------
+# These are non-empty values that satisfy the column's NOT NULL constraint
+# without claiming that real data was used. Phase 2 ships them for the three
+# fields no real component populates yet; Phase 3 replaces
+# `perception_model_version` and `imagery_capture_window` with real values,
+# leaving only the propagation sentinel.
 PHASE_2_PERCEPTION_MODEL_VERSION_SENTINEL: Final[str] = "none-phase-2"
-PHASE_2_IMAGERY_WINDOW_SENTINEL: Final[str] = "[1970-01-01,1970-01-02)"
+# Single-day sentinel: both endpoints are 1970-01-01. The
+# imagery_capture_window_daterange property converts `(d, d)` to the
+# half-open `[d, d+1)` PostgreSQL daterange literal, byte-identical to
+# the Phase 2 sentinel string `[1970-01-01,1970-01-02)`.
+PHASE_2_IMAGERY_WINDOW_SENTINEL: Final[tuple[date, date]] = (
+    date(1970, 1, 1),
+    date(1970, 1, 1),
+)
 
 
-# Stub values for the three non-glare sub-scores. Deterministic 0.0 keeps
-# the column NOT-NULL-able if a future migration tightens it, and matches
-# the visual convention that "no signal = no risk". Consumers must read
-# the matching ``is_stub_*`` flag, never the value, to know whether the
-# number is meaningful.
+# Stub values for the sub-scores that have no real scorer this phase.
+# Deterministic 0.0 keeps the column NOT-NULL-able if a future migration
+# tightens it, and matches the visual convention "no signal = no risk".
+# Consumers must read the matching ``is_stub_*`` flag, never the value,
+# to know whether the number is meaningful.
 STUB_SUB_SCORE_VALUE: Final[float] = 0.0
+
+
+# --- Sub-score column registry ----------------------------------------------
+# Phase 3's name-driven persistence replaces Phase 2's hard-coded glare
+# block. Each entry maps a scorer's ``name`` to the three columns the row
+# write touches: the sub_score value, the is_stub flag, and the canonical
+# "this is real now" tag (purely documentation — useful when grepping for
+# which phase flipped a stub).
+@dataclass(frozen=True, slots=True)
+class _SubScoreColumns:
+    sub_score_col: str
+    is_stub_col: str
+    real_since_phase: int  # 0 if still stubbed; 2 = glare, 3 = lane_marking, ...
+
+
+_SUB_SCORE_REGISTRY: Final[dict[str, _SubScoreColumns]] = {
+    "glare": _SubScoreColumns(
+        sub_score_col="sub_score_glare",
+        is_stub_col="is_stub_glare",
+        real_since_phase=2,
+    ),
+    "lane_marking": _SubScoreColumns(
+        sub_score_col="sub_score_lane_marking",
+        is_stub_col="is_stub_lane_marking",
+        real_since_phase=3,
+    ),
+    # Phase 4 entries (placeholders, written as stubs until their scorers ship):
+    "junction_complexity": _SubScoreColumns(
+        sub_score_col="sub_score_junction_complexity",
+        is_stub_col="is_stub_junction_complexity",
+        real_since_phase=0,
+    ),
+    "historical": _SubScoreColumns(
+        sub_score_col="sub_score_historical",
+        is_stub_col="is_stub_historical",
+        real_since_phase=0,
+    ),
+}
 
 
 @dataclass(frozen=True, slots=True)
 class ScoringRunConfig:
-    """Inputs to one scoring-run invocation."""
+    """Inputs to one scoring-run invocation.
+
+    ``imagery_capture_window`` switched from ``str`` (Phase 2 daterange
+    literal) to ``tuple[date, date]`` in Phase 3 so callers compute the
+    real ``(min, max)`` from ``segment_imagery``. The persistence layer
+    converts to the PostgreSQL ``daterange`` string at insertion.
+    """
 
     temporal_samples: tuple[datetime, ...]
     osm_snapshot_date: date
     perception_model_version: str = PHASE_2_PERCEPTION_MODEL_VERSION_SENTINEL
-    imagery_capture_window: str = PHASE_2_IMAGERY_WINDOW_SENTINEL
+    imagery_capture_window: tuple[date, date] = PHASE_2_IMAGERY_WINDOW_SENTINEL
     propagation_algorithm_version: str = PHASE_2_PROPAGATION_SENTINEL
     notes: str = ""
 
@@ -74,8 +131,20 @@ class ScoringRunConfig:
             raise ValueError("perception_model_version must be a non-empty string")
         if not self.propagation_algorithm_version:
             raise ValueError("propagation_algorithm_version must be a non-empty string")
-        if not self.imagery_capture_window:
-            raise ValueError("imagery_capture_window must be a non-empty string")
+        start, end = self.imagery_capture_window
+        if start > end:
+            raise ValueError(f"imagery_capture_window start ({start}) is after end ({end})")
+
+    @property
+    def imagery_capture_window_daterange(self) -> str:
+        """Half-open PostgreSQL ``daterange`` literal for persistence."""
+        start, end = self.imagery_capture_window
+        # `[start, end+1)` so the end date is *inclusive* in human terms
+        # while staying within the PostgreSQL daterange's half-open
+        # convention.
+        from datetime import timedelta
+
+        return f"[{start.isoformat()},{(end + timedelta(days=1)).isoformat()})"
 
 
 def default_24_hourly_samples(reference_date: date) -> tuple[datetime, ...]:
@@ -261,8 +330,10 @@ class ScoringRun:
                         "scoring_run_timestamp": run_timestamp,
                         "perception_model_version": self._config.perception_model_version,
                         "osm_snapshot_date": self._config.osm_snapshot_date,
-                        "imagery_capture_window": self._config.imagery_capture_window,
-                        "propagation_algorithm_version": self._config.propagation_algorithm_version,
+                        "imagery_capture_window": (self._config.imagery_capture_window_daterange),
+                        "propagation_algorithm_version": (
+                            self._config.propagation_algorithm_version
+                        ),
                         "notes": self._config.notes,
                     },
                 )
@@ -327,39 +398,59 @@ class ScoringRun:
         run_id: UUID,
         results: dict[str, Any],
     ) -> dict[str, object]:
+        """Build one ``segment_scores`` row from the per-scorer results.
 
-        glare = results.get("glare")
-        if glare is None:
-            glare_value = STUB_SUB_SCORE_VALUE
-            is_stub_glare = True
-            confidence = 0.0
-        else:
-            glare_value = glare.value
-            is_stub_glare = glare.is_stub
-            # Phase 2: confidence is taken from the only real sub-score.
-            # Phase 3 will assemble confidence across sub-scores.
-            confidence = glare.confidence
-
-        # The other three sub-scores have no real scorers in Phase 2.
-        return {
+        Name-driven via ``_SUB_SCORE_REGISTRY`` so adding a new
+        sub-score in Phase 4+ is a registry entry + a SubScorer
+        instance — no edits here. The composite risk and confidence
+        scalar are *transitional*: Phase 3 carries the only-real-signal
+        composite (mean of real sub-scores) and the per-sub-score
+        confidence; Phase 3.5's API confidence assembly replaces the
+        scalar at the consumer layer, and Phase 4's propagator
+        replaces the composite at this layer.
+        """
+        row: dict[str, object] = {
             "segment_id": segment.segment_id,
-            "composite_risk": glare_value,  # Phase 2: composite = glare (only real signal)
-            "sub_score_lane_marking": STUB_SUB_SCORE_VALUE,
-            "sub_score_glare": glare_value,
-            "sub_score_junction_complexity": STUB_SUB_SCORE_VALUE,
-            "sub_score_historical": STUB_SUB_SCORE_VALUE,
-            "confidence": confidence,
-            "is_stub_lane_marking": True,
-            "is_stub_glare": is_stub_glare,
-            "is_stub_junction_complexity": True,
-            "is_stub_historical": True,
             "scoring_run_id": run_id,
             "scoring_run_timestamp": sample,
             "perception_model_version": self._config.perception_model_version,
             "osm_snapshot_date": self._config.osm_snapshot_date,
-            "imagery_capture_window": self._config.imagery_capture_window,
+            "imagery_capture_window": self._config.imagery_capture_window_daterange,
             "propagation_algorithm_version": self._config.propagation_algorithm_version,
         }
+
+        # Per-sub-score columns + provisional composite/confidence.
+        real_values: list[float] = []
+        real_confidences: list[float] = []
+        for name, cols in _SUB_SCORE_REGISTRY.items():
+            result: SubScoreResult | None = results.get(name)
+            if result is None:
+                # No scorer for this column in this run → write stub.
+                row[cols.sub_score_col] = STUB_SUB_SCORE_VALUE
+                row[cols.is_stub_col] = True
+                continue
+            row[cols.sub_score_col] = result.value
+            row[cols.is_stub_col] = result.is_stub
+            if not result.is_stub:
+                real_values.append(result.value)
+                real_confidences.append(result.confidence)
+
+        # Phase 3 composite: mean of real sub-scores (1 = glare-only in
+        # Phase 2; 2 = glare + lane_marking in Phase 3). Phase 4's
+        # propagator replaces this. If every real scorer fell back to
+        # stub for this segment, composite = 0 (mirrors the
+        # is_stub == True ⇒ value == 0 convention).
+        row["composite_risk"] = (
+            sum(real_values) / len(real_values) if real_values else STUB_SUB_SCORE_VALUE
+        )
+        # Phase 3 scalar confidence: min of per-sub-score confidences
+        # (parallels Tech Note 4's min-rule but applied at the
+        # sub-score-confidence axis rather than the freshness /
+        # coverage / model-uncertainty axis). The API layer assembles
+        # the explainable confidence-with-limiter at request time
+        # (Phase 3.5); this scalar is the persisted projection.
+        row["confidence"] = min(real_confidences) if real_confidences else 0.0
+        return row
 
 
 def _flush(conn: psycopg.Connection[tuple[object, ...]], batch: Iterable[dict[str, object]]) -> int:
