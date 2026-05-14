@@ -5,10 +5,11 @@
 
 import { configureStore } from "@reduxjs/toolkit";
 
+import scrubber from "./scrubber";
 import viewport from "./viewport";
 
 export const store = configureStore({
-  reducer: { viewport },
+  reducer: { viewport, scrubber },
 });
 
 export type RootState = ReturnType<typeof store.getState>;
