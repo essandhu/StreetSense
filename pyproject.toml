@@ -168,6 +168,9 @@ module = [
     "PIL.*",
     "minio.*",
     "networkx.*",
+    # Compiled pybind11 extension. Type stubs would land in Phase 4.4
+    # or later; for now mypy treats it as Any.
+    "streetsense_propagator",
 ]
 ignore_missing_imports = true
 

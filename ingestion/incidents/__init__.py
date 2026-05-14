@@ -16,4 +16,11 @@ concrete adapter in 4.5.5, and the ingestion job in 4.5.6 — see
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from .provider import BoundingBox, IncidentProvider, IncidentRecord, IncidentSeverity
+
+__all__ = [
+    "BoundingBox",
+    "IncidentProvider",
+    "IncidentRecord",
+    "IncidentSeverity",
+]
