@@ -58,15 +58,21 @@ def seed_segment(owner_conn: psycopg.Connection[Any]) -> UUID:
 
 @pytest.fixture
 def seed_data_sources(owner_conn: psycopg.Connection[Any]) -> None:
-    """Insert two data_sources rows for the freshness endpoint."""
+    """Insert data_sources rows for the freshness endpoint.
+
+    Phase 2 adds `solar_position` to the registry (migration 0005); the
+    `/admin/freshness` endpoint surfaces it alongside `osm` and the
+    Phase-3 placeholder `imagery`.
+    """
     with owner_conn.cursor() as cur:
         cur.execute("DELETE FROM data_sources")
         cur.execute(
             """
             INSERT INTO data_sources (name, last_ingested_at, metadata)
             VALUES
-                ('osm',     now() - interval '1 hour', '{"source_url": "file://osm"}'::jsonb),
-                ('imagery', NULL,                     '{}'::jsonb)
+                ('osm',            now() - interval '1 hour', '{"source_url": "file://osm"}'::jsonb),
+                ('imagery',        NULL,                       '{}'::jsonb),
+                ('solar_position', now(),                      '{"kind": "compute", "library": "pvlib", "model": "nrel-spa"}'::jsonb)
             """
         )
     owner_conn.commit()

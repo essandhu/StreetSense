@@ -25,7 +25,7 @@ async def test_freshness_returns_list_envelope(
     assert "sources" in body
     assert isinstance(body["sources"], list)
     names = {entry["name"] for entry in body["sources"]}
-    assert names == {"osm", "imagery"}
+    assert names == {"osm", "imagery", "solar_position"}
 
 
 @pytest.mark.asyncio
@@ -38,6 +38,10 @@ async def test_freshness_carries_last_ingested_at(
     by_name = {entry["name"]: entry for entry in body["sources"]}
     assert by_name["osm"]["last_ingested_at"] is not None
     assert by_name["imagery"]["last_ingested_at"] is None
+    assert by_name["solar_position"]["last_ingested_at"] is not None
+    # Phase 2 adds a compute source (no upstream file) — confirm the
+    # metadata distinguishes it from file-backed sources.
+    assert by_name["solar_position"]["metadata"].get("kind") == "compute"
 
 
 @pytest.mark.asyncio
