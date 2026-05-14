@@ -35,6 +35,13 @@ export type MapProps = {
   tileSourceUrl: string;
   initialCenter?: [number, number];
   initialZoom?: number;
+  /**
+   * Imperative escape hatch — called once with the MapLibre instance
+   * after construction, called again with `null` on unmount. Children
+   * needing the map (e.g., the deck.gl glare overlay) hold the instance
+   * in their own ref and react to its presence via `useEffect`.
+   */
+  onReady?: (map: maplibregl.Map | null) => void;
 };
 
 const buildStyle = (tileSourceUrl: string): StyleSpecification => ({
@@ -95,6 +102,7 @@ export const Map = ({
   tileSourceUrl,
   initialCenter = DEFAULT_CENTER,
   initialZoom = DEFAULT_ZOOM,
+  onReady,
 }: MapProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
@@ -110,8 +118,10 @@ export const Map = ({
       zoom: initialZoom,
     });
     mapRef.current = map;
+    onReady?.(map);
 
     return () => {
+      onReady?.(null);
       map.remove();
       mapRef.current = null;
     };

@@ -33,7 +33,7 @@ const renderWithStore = (initial?: { hourOfDay?: number; dayOfYear?: number }) =
     ...render(
       <Provider store={store}>
         <Scrubber />
-      </Provider>,
+      </Provider>
     ),
   };
 };
