@@ -4,277 +4,318 @@
  */
 
 export interface paths {
-  "/segments/{segment_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/segments/{segment_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Segment
+         * @description Return the per-segment detail payload (API 3.0).
+         */
+        get: operations["get_segment_segments__segment_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /**
-     * Get Segment
-     * @description Return the per-segment detail payload.
-     *
-     *     Per-sub-score `is_stub` flags expose which scorers are real:
-     *     glare flips to false in Phase 2; the other three remain true.
-     */
-    get: operations["get_segment_segments__segment_id__get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/admin/freshness": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/admin/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Freshness */
+        get: operations["freshness_admin_freshness_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Freshness */
-    get: operations["freshness_admin_freshness_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/health": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
+    "/health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Health */
+        get: operations["health_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
     };
-    /** Health */
-    get: operations["health_health_get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
 }
 export type webhooks = Record<string, never>;
 export interface components {
-  schemas: {
-    /**
-     * FreshnessEntry
-     * @description One row of `/admin/freshness`.
-     */
-    FreshnessEntry: {
-      /** Name */
-      name: string;
-      /** Last Ingested At */
-      last_ingested_at: string | null;
-      /** Metadata */
-      metadata?: {
-        [key: string]: unknown;
-      };
+    schemas: {
+        /**
+         * ConfidenceIndicator
+         * @description Per-segment confidence + the input that limited it (spec Tech Note 4).
+         *
+         *     ``value`` is the min-rule combination of ``freshness``, ``coverage``,
+         *     and ``1 - model_uncertainty``. ``limiter`` names whichever of the
+         *     three drove the value lowest.
+         */
+        ConfidenceIndicator: {
+            /** Value */
+            value: number;
+            /**
+             * Limiter
+             * @enum {string}
+             */
+            limiter: "freshness" | "coverage" | "model";
+        };
+        /**
+         * FreshnessEntry
+         * @description One row of `/admin/freshness`.
+         */
+        FreshnessEntry: {
+            /** Name */
+            name: string;
+            /** Last Ingested At */
+            last_ingested_at: string | null;
+            /** Metadata */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * FreshnessReport
+         * @description Response shape for `/admin/freshness`.
+         *
+         *     A *list* (wrapped) — not a single object — so Phase 3 can register
+         *     multiple data sources (imagery providers, incident feeds) without a
+         *     breaking API change.
+         */
+        FreshnessReport: {
+            /** Sources */
+            sources: components["schemas"]["FreshnessEntry"][];
+            /**
+             * Server Time
+             * Format: date-time
+             */
+            server_time: string;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * ImageryReference
+         * @description A pre-signed pointer to one piece of source imagery.
+         */
+        ImageryReference: {
+            /**
+             * Url
+             * @description Pre-signed MinIO URL with a short TTL. Clients fetch the bytes directly from MinIO rather than proxying through the API.
+             */
+            url: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Capture Date
+             * Format: date
+             */
+            capture_date: string;
+            /** Heading Deg */
+            heading_deg: number;
+            /** Camera Params */
+            camera_params?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SegmentDetail
+         * @description Per-segment detail payload returned by GET /segments/{id}.
+         *
+         *     Phase 3 (API 3.0, breaking): ``confidence`` is a
+         *     ``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries
+         *     pre-signed URLs for the source images that backed
+         *     ``sub_scores.lane_marking_quality``.
+         */
+        SegmentDetail: {
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /** Osm Way Id */
+            osm_way_id: number | null;
+            /**
+             * Composite Risk
+             * @description Composite risk in [0, 1]. Phase 3: mean of real sub-scores (glare + lane_marking). Phase 4 ships the weighted composite from the propagator.
+             */
+            composite_risk: number;
+            sub_scores: components["schemas"]["SubScores"];
+            confidence: components["schemas"]["ConfidenceIndicator"];
+            /**
+             * Imagery
+             * @description Source imagery references backing this segment's perception sub-score. Empty when no imagery is available.
+             */
+            imagery?: components["schemas"]["ImageryReference"][];
+            /**
+             * Attrs
+             * @description Selected OSM attributes.
+             */
+            attrs?: {
+                [key: string]: string;
+            };
+        };
+        /**
+         * SubScore
+         * @description One sub-score's per-segment, per-timestamp output as exposed at
+         *     the API boundary.
+         *
+         *     Mirrors `scoring.interface.SubScoreResult` but lives in `api/` so
+         *     the API can evolve its serialization independently if needed.
+         */
+        SubScore: {
+            /**
+             * Value
+             * @description Risk in [0, 1]. Higher = worse.
+             */
+            value: number;
+            /** Confidence */
+            confidence: number;
+            /**
+             * Is Stub
+             * @description True if the value is a stub (no real scorer for this sub-score in this phase). Consumers must check this — Phase 2 carries is_stub=false only for glare_exposure.
+             */
+            is_stub: boolean;
+            /**
+             * Metadata
+             * @description Scorer-specific provenance (e.g., sun_azimuth_deg / sun_elevation_deg for glare). Safe to add fields without breaking consumers.
+             */
+            metadata?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SubScores
+         * @description Four sub-scores carried in every composite-risk response.
+         *
+         *     Phase 1 stub values. Phase 2 fills `glare_exposure`; Phase 3 fills
+         *     `lane_marking_quality` and `historical_correlation`; Phase 4 fills the
+         *     weighted composite. `junction_complexity` is derived from OSM topology
+         *     in Phase 3+.
+         */
+        SubScores: {
+            lane_marking_quality: components["schemas"]["SubScore"];
+            glare_exposure: components["schemas"]["SubScore"];
+            junction_complexity: components["schemas"]["SubScore"];
+            historical_correlation: components["schemas"]["SubScore"];
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
     };
-    /**
-     * FreshnessReport
-     * @description Response shape for `/admin/freshness`.
-     *
-     *     A *list* (wrapped) — not a single object — so Phase 3 can register
-     *     multiple data sources (imagery providers, incident feeds) without a
-     *     breaking API change.
-     */
-    FreshnessReport: {
-      /** Sources */
-      sources: components["schemas"]["FreshnessEntry"][];
-      /**
-       * Server Time
-       * Format: date-time
-       */
-      server_time: string;
-    };
-    /** HTTPValidationError */
-    HTTPValidationError: {
-      /** Detail */
-      detail?: components["schemas"]["ValidationError"][];
-    };
-    /**
-     * SegmentDetail
-     * @description Per-segment detail payload returned by GET /segments/{id}.
-     *
-     *     Phase 2: top-level `risk_stub` flag removed; per-sub-score
-     *     `is_stub` flags inside `sub_scores` replace it.
-     */
-    SegmentDetail: {
-      /**
-       * Segment Id
-       * Format: uuid
-       */
-      segment_id: string;
-      /** Osm Way Id */
-      osm_way_id: number | null;
-      /**
-       * Composite Risk
-       * @description Composite risk in [0, 1]. Phase 2: equal to the glare value (the only real sub-score). Phase 4 ships the weighted composite.
-       */
-      composite_risk: number;
-      sub_scores: components["schemas"]["SubScores"];
-      /**
-       * Confidence
-       * @description Confidence in [0, 1]. Phase 2: glare's confidence (placeholder 1.0).
-       */
-      confidence: number;
-      /**
-       * Attrs
-       * @description Selected OSM attributes.
-       */
-      attrs?: {
-        [key: string]: string;
-      };
-    };
-    /**
-     * SubScore
-     * @description One sub-score's per-segment, per-timestamp output as exposed at
-     *     the API boundary.
-     *
-     *     Mirrors `scoring.interface.SubScoreResult` but lives in `api/` so
-     *     the API can evolve its serialization independently if needed.
-     */
-    SubScore: {
-      /**
-       * Value
-       * @description Risk in [0, 1]. Higher = worse.
-       */
-      value: number;
-      /** Confidence */
-      confidence: number;
-      /**
-       * Is Stub
-       * @description True if the value is a stub (no real scorer for this sub-score in this phase). Consumers must check this — Phase 2 carries is_stub=false only for glare_exposure.
-       */
-      is_stub: boolean;
-      /**
-       * Metadata
-       * @description Scorer-specific provenance (e.g., sun_azimuth_deg / sun_elevation_deg for glare). Safe to add fields without breaking consumers.
-       */
-      metadata?: {
-        [key: string]: unknown;
-      };
-    };
-    /**
-     * SubScores
-     * @description Four sub-scores carried in every composite-risk response.
-     *
-     *     Phase 1 stub values. Phase 2 fills `glare_exposure`; Phase 3 fills
-     *     `lane_marking_quality` and `historical_correlation`; Phase 4 fills the
-     *     weighted composite. `junction_complexity` is derived from OSM topology
-     *     in Phase 3+.
-     */
-    SubScores: {
-      lane_marking_quality: components["schemas"]["SubScore"];
-      glare_exposure: components["schemas"]["SubScore"];
-      junction_complexity: components["schemas"]["SubScore"];
-      historical_correlation: components["schemas"]["SubScore"];
-    };
-    /** ValidationError */
-    ValidationError: {
-      /** Location */
-      loc: (string | number)[];
-      /** Message */
-      msg: string;
-      /** Error Type */
-      type: string;
-      /** Input */
-      input?: unknown;
-      /** Context */
-      ctx?: Record<string, never>;
-    };
-  };
-  responses: never;
-  parameters: never;
-  requestBodies: never;
-  headers: never;
-  pathItems: never;
+    responses: never;
+    parameters: never;
+    requestBodies: never;
+    headers: never;
+    pathItems: never;
 }
 export type $defs = Record<string, never>;
 export interface operations {
-  get_segment_segments__segment_id__get: {
-    parameters: {
-      query?: {
-        /** @description Optional ISO-8601 UTC instant. Snaps to the nearest persisted hourly sample in segment_scores. Omitted ⇒ most recent score row. */
-        t?: string | null;
-      };
-      header?: never;
-      path: {
-        segment_id: string;
-      };
-      cookie?: never;
+    get_segment_segments__segment_id__get: {
+        parameters: {
+            query?: {
+                /** @description Optional ISO-8601 UTC instant. Snaps to the nearest persisted hourly sample in segment_scores. Omitted ⇒ most recent score row. */
+                t?: string | null;
+            };
+            header?: never;
+            path: {
+                segment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentDetail"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
     };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    freshness_admin_freshness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          "application/json": components["schemas"]["SegmentDetail"];
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FreshnessReport"];
+                };
+            };
         };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
     };
-  };
-  freshness_admin_freshness_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
+    health_health_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
         };
-        content: {
-          "application/json": components["schemas"]["FreshnessReport"];
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
         };
-      };
     };
-  };
-  health_health_get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": {
-            [key: string]: string;
-          };
-        };
-      };
-    };
-  };
 }

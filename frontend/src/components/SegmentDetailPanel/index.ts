@@ -1,0 +1,1 @@
+export { SegmentDetailPanel } from "./SegmentDetailPanel";

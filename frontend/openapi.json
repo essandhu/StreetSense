@@ -2,14 +2,16 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StreetSense API",
-    "version": "2.0.0"
+    "version": "3.0.0"
   },
   "paths": {
     "/segments/{segment_id}": {
       "get": {
-        "tags": ["segments"],
+        "tags": [
+          "segments"
+        ],
         "summary": "Get Segment",
-        "description": "Return the per-segment detail payload.\n\nPer-sub-score `is_stub` flags expose which scorers are real:\nglare flips to false in Phase 2; the other three remain true.",
+        "description": "Return the per-segment detail payload (API 3.0).",
         "operationId": "get_segment_segments__segment_id__get",
         "parameters": [
           {
@@ -68,7 +70,9 @@
     },
     "/admin/freshness": {
       "get": {
-        "tags": ["admin"],
+        "tags": [
+          "admin"
+        ],
         "summary": "Freshness",
         "operationId": "freshness_admin_freshness_get",
         "responses": {
@@ -87,7 +91,9 @@
     },
     "/health": {
       "get": {
-        "tags": ["meta"],
+        "tags": [
+          "meta"
+        ],
         "summary": "Health",
         "operationId": "health_health_get",
         "responses": {
@@ -111,6 +117,32 @@
   },
   "components": {
     "schemas": {
+      "ConfidenceIndicator": {
+        "properties": {
+          "value": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Value"
+          },
+          "limiter": {
+            "type": "string",
+            "enum": [
+              "freshness",
+              "coverage",
+              "model"
+            ],
+            "title": "Limiter"
+          }
+        },
+        "type": "object",
+        "required": [
+          "value",
+          "limiter"
+        ],
+        "title": "ConfidenceIndicator",
+        "description": "Per-segment confidence + the input that limited it (spec Tech Note 4).\n\n``value`` is the min-rule combination of ``freshness``, ``coverage``,\nand ``1 - model_uncertainty``. ``limiter`` names whichever of the\nthree drove the value lowest."
+      },
       "FreshnessEntry": {
         "properties": {
           "name": {
@@ -136,7 +168,10 @@
           }
         },
         "type": "object",
-        "required": ["name", "last_ingested_at"],
+        "required": [
+          "name",
+          "last_ingested_at"
+        ],
         "title": "FreshnessEntry",
         "description": "One row of `/admin/freshness`."
       },
@@ -156,7 +191,10 @@
           }
         },
         "type": "object",
-        "required": ["sources", "server_time"],
+        "required": [
+          "sources",
+          "server_time"
+        ],
         "title": "FreshnessReport",
         "description": "Response shape for `/admin/freshness`.\n\nA *list* (wrapped) \u2014 not a single object \u2014 so Phase 3 can register\nmultiple data sources (imagery providers, incident feeds) without a\nbreaking API change."
       },
@@ -172,6 +210,42 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
+      },
+      "ImageryReference": {
+        "properties": {
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Pre-signed MinIO URL with a short TTL. Clients fetch the bytes directly from MinIO rather than proxying through the API."
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider"
+          },
+          "capture_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Capture Date"
+          },
+          "heading_deg": {
+            "type": "number",
+            "title": "Heading Deg"
+          },
+          "camera_params": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Camera Params"
+          }
+        },
+        "type": "object",
+        "required": [
+          "url",
+          "provider",
+          "capture_date",
+          "heading_deg"
+        ],
+        "title": "ImageryReference",
+        "description": "A pre-signed pointer to one piece of source imagery."
       },
       "SegmentDetail": {
         "properties": {
@@ -194,15 +268,21 @@
           "composite_risk": {
             "type": "number",
             "title": "Composite Risk",
-            "description": "Composite risk in [0, 1]. Phase 2: equal to the glare value (the only real sub-score). Phase 4 ships the weighted composite."
+            "description": "Composite risk in [0, 1]. Phase 3: mean of real sub-scores (glare + lane_marking). Phase 4 ships the weighted composite from the propagator."
           },
           "sub_scores": {
             "$ref": "#/components/schemas/SubScores"
           },
           "confidence": {
-            "type": "number",
-            "title": "Confidence",
-            "description": "Confidence in [0, 1]. Phase 2: glare's confidence (placeholder 1.0)."
+            "$ref": "#/components/schemas/ConfidenceIndicator"
+          },
+          "imagery": {
+            "items": {
+              "$ref": "#/components/schemas/ImageryReference"
+            },
+            "type": "array",
+            "title": "Imagery",
+            "description": "Source imagery references backing this segment's perception sub-score. Empty when no imagery is available."
           },
           "attrs": {
             "additionalProperties": {
@@ -214,9 +294,15 @@
           }
         },
         "type": "object",
-        "required": ["segment_id", "osm_way_id", "composite_risk", "sub_scores", "confidence"],
+        "required": [
+          "segment_id",
+          "osm_way_id",
+          "composite_risk",
+          "sub_scores",
+          "confidence"
+        ],
         "title": "SegmentDetail",
-        "description": "Per-segment detail payload returned by GET /segments/{id}.\n\nPhase 2: top-level `risk_stub` flag removed; per-sub-score\n`is_stub` flags inside `sub_scores` replace it."
+        "description": "Per-segment detail payload returned by GET /segments/{id}.\n\nPhase 3 (API 3.0, breaking): ``confidence`` is a\n``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries\npre-signed URLs for the source images that backed\n``sub_scores.lane_marking_quality``."
       },
       "SubScore": {
         "properties": {
@@ -246,7 +332,11 @@
           }
         },
         "type": "object",
-        "required": ["value", "confidence", "is_stub"],
+        "required": [
+          "value",
+          "confidence",
+          "is_stub"
+        ],
         "title": "SubScore",
         "description": "One sub-score's per-segment, per-timestamp output as exposed at\nthe API boundary.\n\nMirrors `scoring.interface.SubScoreResult` but lives in `api/` so\nthe API can evolve its serialization independently if needed."
       },
@@ -308,7 +398,11 @@
           }
         },
         "type": "object",
-        "required": ["loc", "msg", "type"],
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
         "title": "ValidationError"
       }
     }

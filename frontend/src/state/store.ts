@@ -6,10 +6,11 @@
 import { configureStore } from "@reduxjs/toolkit";
 
 import scrubber from "./scrubber";
+import selectedSegment from "./selectedSegment";
 import viewport from "./viewport";
 
 export const store = configureStore({
-  reducer: { viewport, scrubber },
+  reducer: { viewport, scrubber, selectedSegment },
 });
 
 export type RootState = ReturnType<typeof store.getState>;

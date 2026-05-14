@@ -42,6 +42,11 @@ export type MapProps = {
    * in their own ref and react to its presence via `useEffect`.
    */
   onReady?: (map: maplibregl.Map | null) => void;
+  /**
+   * Called when a feature on the road-segments layer is clicked. Phase
+   * 3.6.13: dispatched by `MapView` to open the segment-detail panel.
+   */
+  onSegmentClick?: (segmentId: string) => void;
 };
 
 const buildStyle = (tileSourceUrl: string): StyleSpecification => ({
@@ -103,9 +108,17 @@ export const Map = ({
   initialCenter = DEFAULT_CENTER,
   initialZoom = DEFAULT_ZOOM,
   onReady,
+  onSegmentClick,
 }: MapProps) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
+  const onSegmentClickRef = useRef(onSegmentClick);
+
+  // Keep the callback ref in sync so the mount-once map handler picks
+  // up the latest closure without re-attaching on every render.
+  useEffect(() => {
+    onSegmentClickRef.current = onSegmentClick;
+  }, [onSegmentClick]);
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) {
@@ -127,7 +140,22 @@ export const Map = ({
       map.once("load", () => onReady?.(map));
     }
 
+    // Phase 3.6.13: clicks on the road-segments layer open the panel.
+    // The listener reads the latest callback via ref so we don't have
+    // to re-attach on every render.
+    const onClick = (e: maplibregl.MapMouseEvent) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: ["road_segments_stub"],
+      });
+      const id = features[0]?.properties?.id;
+      if (typeof id === "string") {
+        onSegmentClickRef.current?.(id);
+      }
+    };
+    map.on("click", onClick);
+
     return () => {
+      map.off("click", onClick);
       onReady?.(null);
       map.remove();
       mapRef.current = null;

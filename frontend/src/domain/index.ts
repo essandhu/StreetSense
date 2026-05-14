@@ -23,8 +23,14 @@ export const RunId = (uuid: string): RunId => uuid as RunId;
 // --- Re-exports of API schemas ------------------------------------------
 export type SegmentDetail = components["schemas"]["SegmentDetail"];
 export type SubScores = components["schemas"]["SubScores"];
+export type SubScore = components["schemas"]["SubScore"];
+export type ConfidenceIndicator = components["schemas"]["ConfidenceIndicator"];
+export type ImageryReference = components["schemas"]["ImageryReference"];
 export type FreshnessReport = components["schemas"]["FreshnessReport"];
 export type FreshnessEntry = components["schemas"]["FreshnessEntry"];
+
+/** Limiter values surfaced by the API's ConfidenceIndicator. */
+export type ConfidenceLimiter = ConfidenceIndicator["limiter"];
 
 // --- Pure helpers --------------------------------------------------------
 
