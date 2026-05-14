@@ -1,0 +1,122 @@
+interactions:
+- request:
+    body: ''
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Host:
+      - graph.mapillary.com
+      User-Agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://graph.mapillary.com/images?access_token=MLY%7CTEST%7CTEST&bbox=-71.105100%2C42.371900%2C-71.104900%2C42.372100&fields=id%2Ccaptured_at%2Ccompass_angle%2Ccamera_parameters%2Cthumb_1024_url&limit=10
+  response:
+    body:
+      string: '{"data":[{"id":"513915663266359","captured_at":1577033217084,"compass_angle":211.31677246094,"camera_parameters":[1.1165708795912,0.00085993218302222,0.00016367701498317],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An88P2M4qc8ukjRTnYDEPjD04jvchQo0ILFmQRAtVy_Ez1lYge4ictvufiY-FUnJkA7CAQzLsUFP8RH_IBjbQmG_lO_19UTimDY_z006f5HdjjPu0x7i4askxbw6wq27H9iZX9wPmW9fTYL6rO5ITQ?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=BUBCMFzv75yELnFF0Qapow&_nc_oc=AdpozZUR28Uhx2Q08o5oPWDWOhZVnjxjchWq7O6R7PmYjF_tDv72rYaTITS1zse4Jf4&ccb=10-5&oh=00_Af4px0PZGmoauD89Ud08E8mnehRWgo2qOIuoDgzLo9ZRqA&oe=6A2CD5BE&_nc_sid=201bca"},{"id":"304749637716194","captured_at":1507724310126,"compass_angle":210.58172607422,"camera_parameters":[0.82647945437437,0.037752529974159,-0.057387974550128],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An9rLIFBzSk3GPcSsrbFngPs7Sh5-fJAFOTsAm_u-DhPKMMVDwTkfaaAFSzrVawfcntBB4ZTAe2kIpkLu0Cwqx3eoLyK9PdPA6iWojrkLwUY1-A0Y7vDAMCMpKijge__lN8qcjMR5ejuX00zSU5yEQ?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=BUBCMFzv75yELnFF0Qapow&_nc_oc=AdpDWeCu-Gw0gGHxjobIl3IGbn9Np2ZLIv9951a6MVkaHt3BLSS3UhuSlnDuxleagKc&ccb=10-5&oh=00_Af7mFPKyvRCO3f00015sJ34vBN2d3FhZb-ZB0feEa2Q3dA&oe=6A2CCAFE&_nc_sid=201bca"},{"id":"518183942697709","captured_at":1507724311120,"compass_angle":210.63989257812,"camera_parameters":[0.82647945437437,0.037752529974159,-0.057387974550128],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An87TdarMaokLu799GhAMSbHe0qH65iB9_sdCcySWPX5kC640yt3j5Vb8CqsHqng_55T0PtWN_tJF5vNwuAUL5MBO9_4fE8konuceyXaDs9MJqtWpEkaMolhm3LgqSOpIaWtTo3h8JVtb5mwnnqLhA?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=BUBCMFzv75yELnFF0Qapow&_nc_oc=AdrH7bQrVJIsAQjcMyUFEwRyrKoVtDFJ8IwSL9gsq8hPrUBMVH31VniumcbXbU-gMys&ccb=10-5&oh=00_Af5iskYpx5TLc1BIl9D9cxjcyTY3fajdHgpJ2iiBvPRFEQ&oe=6A2CD55A&_nc_sid=201bca"}]}'
+    headers:
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400
+      cache-control:
+      - private, no-cache, no-store, must-revalidate
+      content-length:
+      - '1836'
+      content-type:
+      - application/json; charset=UTF-8
+      date:
+      - Thu, 14 May 2026 04:29:05 GMT
+      etag:
+      - '"001f49979bde708560cee3ed46e489893d6d14f2"'
+      expires:
+      - Sat, 01 Jan 2000 00:00:00 GMT
+      mapillary-api-version:
+      - v1.0
+      pragma:
+      - no-cache
+      strict-transport-security:
+      - max-age=31536000; preload; includeSubDomains
+      vary:
+      - Origin
+      - Accept-Encoding
+      x-app-usage:
+      - '{"call_volume":0,"cpu_time":0}'
+      x-fb-connection-quality:
+      - EXCELLENT; q=0.9, rtt=13, rtx=0, c=10, mss=1392, tbw=4953, tp=-1, tpl=-1,
+        uplat=85, ullat=0
+      x-fb-debug:
+      - ZblCkIaAv5SoVCQmglVOfoonblANPXvykA2woJ4M3ZcFrD0Y0eG9A3PW0bHHMob2htKYFWY94ISNquAVx7rvRw==
+      x-fb-request-id:
+      - Ad9MaPJxYNGTAqoZm9fuYHo
+      x-fb-rev:
+      - '1039475831'
+      x-fb-trace-id:
+      - DhY8UQHS236
+    status:
+      code: 200
+      message: null
+- request:
+    body: ''
+    headers:
+      Accept:
+      - '*/*'
+      Accept-Encoding:
+      - gzip, deflate
+      Connection:
+      - keep-alive
+      Host:
+      - graph.mapillary.com
+      User-Agent:
+      - python-httpx/0.28.1
+    method: GET
+    uri: https://graph.mapillary.com/images?access_token=MLY%7CTEST%7CTEST&bbox=-71.105100%2C42.371900%2C-71.104900%2C42.372100&fields=id%2Ccaptured_at%2Ccompass_angle%2Ccamera_parameters%2Cthumb_1024_url&limit=10
+  response:
+    body:
+      string: '{"data":[{"id":"513915663266359","captured_at":1577033217084,"compass_angle":211.31677246094,"camera_parameters":[1.1165708795912,0.00085993218302222,0.00016367701498317],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An88P2M4qc8ukjRTnYDEPjD04jvchQo0ILFmQRAtVy_Ez1lYge4ictvufiY-FUnJkA7CAQzLsUFP8RH_IBjbQmG_lO_19UTimDY_z006f5HdjjPu0x7i4askxbw6wq27H9iZX9wPmW9fTYL6rO5ITQ?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=tqB1FVXHqFC2kJW21N-pZQ&_nc_oc=AdpozZUR28Uhx2Q08o5oPWDWOhZVnjxjchWq7O6R7PmYjF_tDv72rYaTITS1zse4Jf4&ccb=10-5&oh=00_Af7e8HVLw4K1IFBGjPbuKuENvFU1HScxN-NFTQwU382Yfw&oe=6A2CD5BE&_nc_sid=201bca"},{"id":"518183942697709","captured_at":1507724311120,"compass_angle":210.63989257812,"camera_parameters":[0.82647945437437,0.037752529974159,-0.057387974550128],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An87TdarMaokLu799GhAMSbHe0qH65iB9_sdCcySWPX5kC640yt3j5Vb8CqsHqng_55T0PtWN_tJF5vNwuAUL5MBO9_4fE8konuceyXaDs9MJqtWpEkaMolhm3LgqSOpIaWtTo3h8JVtb5mwnnqLhA?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=tqB1FVXHqFC2kJW21N-pZQ&_nc_oc=AdrH7bQrVJIsAQjcMyUFEwRyrKoVtDFJ8IwSL9gsq8hPrUBMVH31VniumcbXbU-gMys&ccb=10-5&oh=00_Af5g70ox3qddhpc9-wZlP5mWUnIxzDD4fGTGeBxTuBh5kg&oe=6A2CD55A&_nc_sid=201bca"},{"id":"304749637716194","captured_at":1507724310126,"compass_angle":210.58172607422,"camera_parameters":[0.82647945437437,0.037752529974159,-0.057387974550128],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An9rLIFBzSk3GPcSsrbFngPs7Sh5-fJAFOTsAm_u-DhPKMMVDwTkfaaAFSzrVawfcntBB4ZTAe2kIpkLu0Cwqx3eoLyK9PdPA6iWojrkLwUY1-A0Y7vDAMCMpKijge__lN8qcjMR5ejuX00zSU5yEQ?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=tqB1FVXHqFC2kJW21N-pZQ&_nc_oc=AdpDWeCu-Gw0gGHxjobIl3IGbn9Np2ZLIv9951a6MVkaHt3BLSS3UhuSlnDuxleagKc&ccb=10-5&oh=00_Af5uBpBvZjo_UIzqabD2ueoT9aV6GojsWI4Oi8BP_IDtfw&oe=6A2CCAFE&_nc_sid=201bca"},{"id":"846190432643773","captured_at":1577033218081,"compass_angle":212.71759033203,"camera_parameters":[1.1165708795912,0.00085993218302222,0.00016367701498317],"thumb_1024_url":"https:\/\/scontent-dfw6-1.xx.fbcdn.net\/m1\/v\/t6\/An_gMtvNrftG_kGrlRmg25LYnPft70n9L4EfBS0z0x5wp6UF3HpcJxFUtKJvW3rYZYls1Sz4-eUhIFzRwbx7IeYhygmmJdiW2Ca5XPm_THpd5C2ENby2LGq0KEIjdv2P76gzlSmhTTssfGrZ1ihpB0o?stp=s1024x768&edm=AOnQwmMEAAAA&_nc_gid=tqB1FVXHqFC2kJW21N-pZQ&_nc_oc=Adr88IhqNCSdl6JhLuqYx-qXb4WDcX06WNDbP4VtCeQt1YKB0gEjyCEJ33TiZZMhw90&ccb=10-5&oh=00_Af7NPKgjX4Off8ZpY21S7NBLwXIbF-t2NUaerPxDKnKgKg&oe=6A2CA937&_nc_sid=201bca"}]}'
+    headers:
+      access-control-allow-origin:
+      - '*'
+      alt-svc:
+      - h3=":443"; ma=86400
+      cache-control:
+      - private, no-cache, no-store, must-revalidate
+      content-length:
+      - '2447'
+      content-type:
+      - application/json; charset=UTF-8
+      date:
+      - Thu, 14 May 2026 04:29:05 GMT
+      etag:
+      - '"4922355b190e85223addfa58a107f35d0978edf7"'
+      expires:
+      - Sat, 01 Jan 2000 00:00:00 GMT
+      mapillary-api-version:
+      - v1.0
+      pragma:
+      - no-cache
+      strict-transport-security:
+      - max-age=31536000; preload; includeSubDomains
+      vary:
+      - Origin
+      - Accept-Encoding
+      x-app-usage:
+      - '{"call_volume":0,"cpu_time":0}'
+      x-fb-connection-quality:
+      - EXCELLENT; q=0.9, rtt=16, rtx=0, c=10, mss=1392, tbw=6683, tp=-1, tpl=-1,
+        uplat=79, ullat=0
+      x-fb-debug:
+      - A0qRCVhZOjtYgKtjc5zMxeJqfylkjMpoYTjhUI7CGezbhIJon7j/uEa88TMFOVKuRMOxlZce8p8FuuA83MzZ4A==
+      x-fb-request-id:
+      - AzCZeGCpphKRpJOzolz0lEV
+      x-fb-rev:
+      - '1039475831'
+      x-fb-trace-id:
+      - E9d5PL6shJn
+    status:
+      code: 200
+      message: null
+version: 1
