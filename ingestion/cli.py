@@ -99,19 +99,24 @@ def cmd_seed(city: str) -> int:
     return 0
 
 
-def cmd_imagery(city: str) -> int:
+def cmd_imagery(city: str, *, max_segments: int | None = None) -> int:
     _configure_logging()
     config = load_city(city)
     database_url = get_database_url()
 
-    log.info("imagery.start", city=config.name)
+    log.info("imagery.start", city=config.name, max_segments=max_segments)
 
     t0 = time.perf_counter()
+    job_config = (
+        ImageryIngestConfig(max_segments=max_segments)
+        if max_segments is not None
+        else ImageryIngestConfig()
+    )
     with MapillaryProvider() as provider:
         summary = ingest_imagery(
             database_url=database_url,
             provider=provider,
-            config=ImageryIngestConfig(),
+            config=job_config,
         )
     t_total = time.perf_counter() - t0
 
@@ -144,12 +149,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Ingest street-level imagery references for the configured city (Phase 3).",
     )
     imagery.add_argument("--city", required=True, help="City config slug (e.g., cambridge).")
+    imagery.add_argument(
+        "--max-segments",
+        type=int,
+        default=None,
+        help="Cap the number of segments processed (default: unlimited).",
+    )
 
     args = parser.parse_args(argv)
     if args.cmd == "seed":
         return cmd_seed(args.city)
     if args.cmd == "imagery":
-        return cmd_imagery(args.city)
+        return cmd_imagery(args.city, max_segments=args.max_segments)
     parser.error(f"Unknown command: {args.cmd}")
     return 2
 

@@ -99,6 +99,9 @@ class ImageryIngestConfig:
     ``meters_per_sample`` and ``max_samples_per_segment`` together set the
     sampling cadence. The defaults match Tech Note 1: one image per 50 m,
     capped at 5 per segment to bound work per scoring run.
+
+    ``max_segments`` caps the number of segments processed (useful for
+    demo smokes and development). ``None`` = no cap.
     """
 
     meters_per_sample: float = 50.0
@@ -106,6 +109,7 @@ class ImageryIngestConfig:
     within: tuple[date, date] | None = None
     bucket: str = "streetsense-imagery"
     insert_batch_size: int = 1000
+    max_segments: int | None = None
 
 
 # Object-store seam ----------------------------------------------------------
@@ -229,6 +233,8 @@ def ingest_imagery(
         with conn.cursor() as cur:
             cur.execute(_LOAD_SEGMENTS_SQL)
             segments: list[tuple[UUID, bytes]] = list(cur.fetchall())
+            if cfg.max_segments is not None:
+                segments = segments[: cfg.max_segments]
 
             cur.execute(_EXISTING_REFS_SQL, {"provider": provider.name})
             existing: set[tuple[str, str, UUID]] = {

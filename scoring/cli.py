@@ -209,8 +209,7 @@ def cmd_run(city: str, reference_day: date) -> int:
 
     stub_lane_count = _stub_fallback_count(database_url, summary.run_id)
 
-    summary_record = {
-        "event": "scoring_cli.summary",
+    summary_record: dict[str, Any] = {
         "run_id": str(summary.run_id),
         "scoring_run_timestamp": summary.scoring_run_timestamp.isoformat(),
         "rows_written": summary.rows_written,
@@ -225,7 +224,7 @@ def cmd_run(city: str, reference_day: date) -> int:
         "stub_fallback_lane_marking_rows": stub_lane_count,
     }
     log.info("scoring_cli.summary", **summary_record)
-    print(json.dumps(summary_record), file=sys.stdout)
+    print(json.dumps({"event": "scoring_cli.summary", **summary_record}), file=sys.stdout)
     return 0
 
 
