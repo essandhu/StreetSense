@@ -19,6 +19,7 @@
  */
 
 import { expect, test } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 // UTC times that put the Cambridge sun at four distinct geometries on
 // the summer solstice (the scoring-run default reference day).
@@ -29,7 +30,7 @@ const SCRUB_STEPS = [
   { label: "golden_hour", hour: 23 }, // ~19:00 EDT — sun low west
 ];
 
-const sampleCenterPixels = async (page: import("@playwright/test").Page): Promise<string> => {
+const sampleCenterPixels = async (page: Page): Promise<string> => {
   return await page.evaluate(() => {
     const canvases = Array.from(document.querySelectorAll("canvas")) as HTMLCanvasElement[];
     const out: string[] = [];
@@ -60,7 +61,7 @@ const sampleCenterPixels = async (page: import("@playwright/test").Page): Promis
   });
 };
 
-const setHour = async (page: import("@playwright/test").Page, hour: number): Promise<void> => {
+const setHour = async (page: Page, hour: number): Promise<void> => {
   await page.evaluate((h) => {
     const input = document.querySelector('input[aria-label="hour"]') as HTMLInputElement | null;
     if (!input) throw new Error('input[aria-label="hour"] not found');
