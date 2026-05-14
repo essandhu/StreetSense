@@ -22,4 +22,20 @@ from __future__ import annotations
 PHASE_2_PROPAGATION_SENTINEL = "none-phase-2"
 
 
-__all__ = ["PHASE_2_PROPAGATION_SENTINEL"]
+# Documentation-only constant recording the phase that retires
+# ``PHASE_2_PROPAGATION_SENTINEL`` above. Phase 4's scoring run writes the real
+# ``<algo-name>-<semver>`` value into ``propagation_algorithm_version`` (e.g.,
+# ``"influence-diffusion-0.1.0"``); ``"none-phase-2"`` becomes a value no
+# Phase 4+ scoring run ever produces. Pre-Phase-4 rows still carry the
+# sentinel for code archaeology -- they were never wrong, the propagator just
+# didn't run.
+#
+# This constant is consumed by ``tests/scoring/test_phase2_sentinel_retired.py``
+# (added in Phase 4.6.6) to assert the retirement contract.
+PHASE_2_PROPAGATION_SENTINEL_RETIRED_IN = "4"
+
+
+__all__ = [
+    "PHASE_2_PROPAGATION_SENTINEL",
+    "PHASE_2_PROPAGATION_SENTINEL_RETIRED_IN",
+]
