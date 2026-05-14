@@ -1,0 +1,12 @@
+{
+  "timestamp": "2026-05-14T01:33:18.793Z",
+  "sample_count": 120,
+  "samples_over_100ms": 10,
+  "fraction_over_100ms": 0.08333333333333333,
+  "median_ms": 16.700000000000728,
+  "mean_ms": 356.6533333333333,
+  "p95_ms": 3416.5999999999985,
+  "max_ms": 6766.399999999994,
+  "budget_median_ms": 20,
+  "budget_p95_ms": 100
+}

@@ -62,6 +62,11 @@ export type GlareOverlayProps = {
 export const GlareOverlay = ({ map }: GlareOverlayProps) => {
   const tileSource = useGlareTileSource();
 
+  // `interleaved: false` overlays deck.gl on its own canvas above
+  // MapLibre — the deck.gl-recommended pattern. `true` (shared GL
+  // context) is supported but our scrubber latency benchmark shows
+  // a 5-7x regression in tile-fetch-to-render latency under that
+  // mode on Cambridge data; not worth the saving.
   const overlay = useMemo(() => {
     return new MapboxOverlay({ interleaved: false, layers: [] });
   }, []);

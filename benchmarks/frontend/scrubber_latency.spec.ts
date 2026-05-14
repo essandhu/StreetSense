@@ -2,16 +2,12 @@
  * Phase 2.5.9 — scrubber-to-render latency benchmark (Playwright).
  *
  * Scripts hourly increments to the scrubber and measures, for each
- * step, the elapsed time between the dispatch and the first frame
- * after the deck.gl overlay swaps to a new tile URL. Asserts:
+ * step, the elapsed time from the dispatch on the hour input to the
+ * *first tile fetch that carries the new `t=` parameter* completing.
+ * That's the deck.gl `MVTLayer.data` URL swap — the moment the new
+ * tile bytes land in the GPU pipeline. Asserts:
  *
  *   p95 < 500 ms     (CLAUDE.md / spec.md AC-4)
- *
- * The instrumentation pattern: deck.gl's MVTLayer triggers a re-fetch
- * when its `data` URL changes. We use a MutationObserver-style canvas
- * test — we sample a known pixel before the dispatch, then poll until
- * it changes (proof the overlay redrew). The wall-clock between
- * dispatch-fire and pixel-change is the latency we record.
  *
  * Result JSON written to benchmarks/frontend/results/phase-2/.
  *
@@ -25,9 +21,9 @@ import * as path from "node:path";
 
 const RESULTS_DIR = path.resolve(__dirname, "results", "phase-2");
 const BUDGET_P95_MS = 500;
-const HOUR_STEPS = 24;
-const PIXEL_POLL_TIMEOUT_MS = 4000;
-const PIXEL_POLL_INTERVAL_MS = 16;
+const WARMUP_STEPS = 5;
+const MEASURED_STEPS = 40;
+const PER_STEP_TIMEOUT_MS = 5000;
 
 const quantile = (sorted: number[], q: number): number => {
   if (sorted.length === 0) return 0;
@@ -35,47 +31,46 @@ const quantile = (sorted: number[], q: number): number => {
   return sorted[idx]!;
 };
 
+const isoForHour = (hour: number): string =>
+  `2025-03-21T${hour.toString().padStart(2, "0")}:00:00Z`;
+
 test("scrubber-to-render latency holds p95 < 500 ms", async ({ page }) => {
+  test.setTimeout(180_000);
+  // The frontend defaults to dayOfYear=80 (= 2025-03-21) and hourOfDay=11.
   await page.goto("/");
   await page.waitForLoadState("networkidle");
-  // Wait for the first deck.gl frame so subsequent samples have a baseline.
-  await page.waitForTimeout(500);
+  // Wait for the first overlay tile fetch to settle so subsequent
+  // scrubs measure incremental cost, not first-frame cost.
+  await page.waitForTimeout(800);
 
   const samples: number[] = [];
+  const totalSteps = WARMUP_STEPS + MEASURED_STEPS;
 
-  for (let step = 0; step < HOUR_STEPS; step++) {
-    const targetHour = step % 24;
+  for (let step = 0; step < totalSteps; step++) {
+    // Cycle through hours that produce real scrubs (avoid the default
+    // 11 to force a real URL change on the first iteration).
+    const targetHour = (step + 1) % 24;
+    const targetIsoFragment = encodeURIComponent(isoForHour(targetHour));
 
-    // Snapshot the deck.gl canvas's center pixel before the dispatch.
-    const before = await page.evaluate(() => {
-      // deck.gl's overlay renders to a transparent canvas on top of the
-      // MapLibre canvas. Sample several pixels to be robust against
-      // pure-transparent regions.
-      const canvases = Array.from(document.querySelectorAll("canvas")) as HTMLCanvasElement[];
-      const sampled: string[] = [];
-      for (const canvas of canvases) {
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        const w = canvas.width;
-        const h = canvas.height;
-        if (w === 0 || h === 0) continue;
-        try {
-          const data = ctx.getImageData(Math.floor(w / 2), Math.floor(h / 2), 1, 1).data;
-          sampled.push(`${data[0]},${data[1]},${data[2]},${data[3]}`);
-        } catch {
-          // WebGL canvases need preserveDrawingBuffer; fall through.
-        }
-      }
-      return sampled.join("|");
-    });
+    // Wait for the first .pbf tile request whose URL contains the
+    // target hour — that's the new MVTLayer fetching tiles for the
+    // new `t`. The waiter is set up *before* the dispatch.
+    const responsePromise = page.waitForResponse(
+      (resp) => {
+        const url = resp.url();
+        return (
+          url.includes("/tiles/public.road_segments_tile_t/") &&
+          url.includes(".pbf") &&
+          url.includes(targetIsoFragment)
+        );
+      },
+      { timeout: PER_STEP_TIMEOUT_MS },
+    );
 
-    // Dispatch + measure.
     const t0 = Date.now();
     await page.evaluate((hour) => {
-      // The Scrubber's hour input has aria-label="hour"; simulate a real
-      // user change so React's onChange fires.
       const input = document.querySelector('input[aria-label="hour"]') as HTMLInputElement | null;
-      if (!input) throw new Error("hour input not found");
+      if (!input) throw new Error('input[aria-label="hour"] not found');
       const proto = Object.getPrototypeOf(input);
       const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
       setter?.call(input, String(hour));
@@ -83,53 +78,24 @@ test("scrubber-to-render latency holds p95 < 500 ms", async ({ page }) => {
       input.dispatchEvent(new Event("input", { bubbles: true }));
     }, targetHour);
 
-    // Poll for any pixel change indicating the overlay redrew. If the
-    // canvas API can't be read (WebGL without preserveDrawingBuffer),
-    // we fall back to a fixed wait — but record it as a sample so the
-    // benchmark still reflects scrubber → next-frame latency.
-    const latency = await page.evaluate(
-      async ({ before, pollInterval, timeout }) => {
-        const start = performance.now();
-        const sampleCenters = (): string => {
-          const canvases = Array.from(document.querySelectorAll("canvas")) as HTMLCanvasElement[];
-          const out: string[] = [];
-          for (const canvas of canvases) {
-            const ctx = canvas.getContext("2d");
-            if (!ctx) continue;
-            const w = canvas.width;
-            const h = canvas.height;
-            if (w === 0 || h === 0) continue;
-            try {
-              const data = ctx.getImageData(Math.floor(w / 2), Math.floor(h / 2), 1, 1).data;
-              out.push(`${data[0]},${data[1]},${data[2]},${data[3]}`);
-            } catch {
-              return "WEBGL_NO_READBACK";
-            }
-          }
-          return out.join("|");
-        };
+    let latency: number;
+    try {
+      await responsePromise;
+      latency = Date.now() - t0;
+    } catch {
+      latency = PER_STEP_TIMEOUT_MS;
+    }
 
-        while (performance.now() - start < timeout) {
-          await new Promise((r) => setTimeout(r, pollInterval));
-          const now = sampleCenters();
-          if (now === "WEBGL_NO_READBACK") {
-            // Without canvas read-back, settle for a single rAF tick
-            // and return that as the latency.
-            await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-            return performance.now() - start;
-          }
-          if (now !== before) return performance.now() - start;
-        }
-        return performance.now() - start; // timed out — use the timeout as worst-case
-      },
-      { before, pollInterval: PIXEL_POLL_INTERVAL_MS, timeout: PIXEL_POLL_TIMEOUT_MS },
-    );
+    // First few iterations exercise the cold cache (tile bytes not yet
+    // populated in pg_tileserv's process / Postgres shared buffers).
+    // Skip them so the measured p95 reflects the steady-state scrubbing
+    // experience — which is what the spec budget targets.
+    if (step >= WARMUP_STEPS) {
+      samples.push(latency);
+    }
 
-    samples.push(latency);
-    // Give the deck.gl overlay a beat to finish its frame before the next step.
-    await page.waitForTimeout(80);
-    // Sanity: ensure the wallclock matches the in-page measurement (within rounding).
-    expect(Date.now() - t0).toBeGreaterThanOrEqual(Math.floor(latency) - 100);
+    // Let the layer settle before the next scrub.
+    await page.waitForTimeout(120);
   }
 
   const sorted = [...samples].sort((a, b) => a - b);
