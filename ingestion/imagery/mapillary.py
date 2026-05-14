@@ -22,7 +22,7 @@ import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, date, datetime
-from typing import Any, ClassVar
+from typing import Any
 
 import httpx
 
@@ -104,7 +104,7 @@ class MapillaryProvider:
     placeholder ``"MLY|TEST|TEST"`` shows up in cassette URLs.
     """
 
-    name: ClassVar[str] = "mapillary"
+    name: str = "mapillary"
 
     def __init__(
         self,

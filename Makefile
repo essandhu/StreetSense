@@ -14,6 +14,7 @@
 # Targets:
 #   help          Print this list.
 #   seed          Ingest the configured city's OSM extract into Postgres.
+#   ingest-imagery Ingest street-level imagery for the configured city (Phase 3).
 #   api           Start the FastAPI service (+ pg_tileserv where applicable).
 #   scoring-run   Trigger a scoring run end-to-end. (Phase 1 stub.)
 #   test          Run all tests (Python + frontend unit).
@@ -28,11 +29,12 @@ UV   ?= uv
 PNPM ?= pnpm
 
 .DEFAULT_GOAL := help
-.PHONY: help seed api scoring-run test lint db-up db-down migrate clean
+.PHONY: help seed ingest-imagery api scoring-run test lint db-up db-down migrate clean
 
 help:
 	@printf 'Targets:\n'
 	@printf '  make seed CITY=<slug>   Ingest city OSM into Postgres (default: cambridge)\n'
+	@printf '  make ingest-imagery CITY=<slug>  Ingest street-level imagery (Phase 3)\n'
 	@printf '  make api                Start FastAPI service\n'
 	@printf '  make scoring-run        Trigger a scoring run (Phase 1: stub)\n'
 	@printf '  make test               Run Python + frontend unit tests\n'
@@ -53,6 +55,9 @@ migrate:
 
 seed: db-up migrate
 	$(UV) run python -m ingestion.cli seed --city $(CITY)
+
+ingest-imagery: db-up migrate
+	$(UV) run python -m ingestion.cli imagery --city $(CITY)
 
 api: db-up migrate
 	$(UV) run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000

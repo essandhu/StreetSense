@@ -25,6 +25,7 @@ function Invoke-Help {
 Targets:
   .\tasks.ps1 help                          Print this list
   .\tasks.ps1 seed -City <slug>             Ingest city OSM into Postgres (default: cambridge)
+  .\tasks.ps1 ingest-imagery -City <slug>   Ingest street-level imagery (Phase 3)
   .\tasks.ps1 api                           Start FastAPI service
   .\tasks.ps1 scoring-run                   Trigger a scoring run (Phase 1: stub)
   .\tasks.ps1 test                          Run Python + frontend unit tests
@@ -52,6 +53,12 @@ function Invoke-Seed {
     Invoke-DbUp
     Invoke-Migrate
     uv run python -m ingestion.cli seed --city $City
+}
+
+function Invoke-IngestImagery {
+    Invoke-DbUp
+    Invoke-Migrate
+    uv run python -m ingestion.cli imagery --city $City
 }
 
 function Invoke-Api {
@@ -97,9 +104,10 @@ function Invoke-Clean {
 }
 
 switch ($Target) {
-    "help"        { Invoke-Help }
-    "seed"        { Invoke-Seed }
-    "api"         { Invoke-Api }
+    "help"            { Invoke-Help }
+    "seed"            { Invoke-Seed }
+    "ingest-imagery"  { Invoke-IngestImagery }
+    "api"             { Invoke-Api }
     "scoring-run" { Invoke-ScoringRun }
     "test"        { Invoke-Test }
     "test-py"     { Invoke-TestPy }
