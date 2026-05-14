@@ -80,6 +80,82 @@ jobs:
       - name: Vitest
         run: pnpm test
 
+  propagator-cpp:
+    name: Propagator C++ (cmake + ctest + clang-format + clang-tidy)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scoring/propagator
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # pybind11 is vendored as a submodule (Phase 4.1.6). The bindings
+          # build picks it up from external/pybind11/share/cmake/pybind11.
+          submodules: recursive
+      - name: Install C++ toolchain + Boost
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build \
+            libboost-graph-dev libboost-dev \
+            clang clang-format clang-tidy
+      - name: Configure (default preset, Release)
+        # Override generator to Ninja on Linux for ~5x faster configure than Make.
+        # The preset's "auto" generator picks Make by default.
+        run: cmake --preset default -G Ninja
+      - name: Build (default preset)
+        run: cmake --build --preset default
+      - name: Test (default preset)
+        # Phase 4.1: 0 tests expected. testPreset's noTestsAction=ignore turns
+        # ctest's "no tests found" non-zero into a clean exit. Phase 4.2+ adds
+        # real tests; this step becomes load-bearing then.
+        run: ctest --preset default --output-on-failure
+      - name: Configure (debug preset, ASan + UBSan)
+        run: cmake --preset debug -G Ninja
+      - name: Build (debug preset)
+        run: cmake --build --preset debug
+      - name: Test (debug preset)
+        # AddressSanitizer + UndefinedBehaviorSanitizer execution. Phase 4.1
+        # has no tests; Phase 4.2+ asserts zero leaks / zero UB.
+        run: ctest --preset debug --output-on-failure
+      - name: clang-format --dry-run --Werror
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git ls-files \
+            'scoring/propagator/include/**/*.h' \
+            'scoring/propagator/src/**/*.cc' \
+            'scoring/propagator/src/**/*.h' \
+            'scoring/propagator/bindings/**/*.cc' \
+            'scoring/propagator/bindings/**/*.h' \
+            'scoring/propagator/tests/**/*.cc' \
+            'scoring/propagator/tests/**/*.h' \
+            'scoring/propagator/bench/**/*.cc' \
+            'scoring/propagator/bench/**/*.h')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no C++ files yet (Phase 4.1 scaffold); skipping clang-format"
+            exit 0
+          fi
+          clang-format --dry-run --Werror "${files[@]}"
+      - name: clang-tidy --warnings-as-errors='*'
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git ls-files \
+            'scoring/propagator/src/**/*.cc' \
+            'scoring/propagator/bindings/**/*.cc' \
+            'scoring/propagator/tests/**/*.cc' \
+            'scoring/propagator/bench/**/*.cc')
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "no C++ files yet (Phase 4.1 scaffold); skipping clang-tidy"
+            exit 0
+          fi
+          # -p points clang-tidy at the compile_commands.json from the default
+          # build (CMAKE_EXPORT_COMPILE_COMMANDS=ON is set in the preset).
+          clang-tidy --warnings-as-errors='*' \
+            -p scoring/propagator/build/default \
+            "${files[@]}"
+
   db:
     name: Postgres integration (schema invariants)
     runs-on: ubuntu-latest
