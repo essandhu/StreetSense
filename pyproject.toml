@@ -70,6 +70,16 @@ model-export = [
 onnx-tools = [
     "onnx>=1.17",
 ]
+# Opt-in group that builds the native C++ propagator + pybind11
+# bindings (Phase 4). Skipped by the Python CI job (which lacks a C++
+# toolchain) and activated by the propagator-cpp CI job + by
+# contributors running `uv sync --group propagator` locally.
+propagator = [
+    "streetsense-propagator",
+]
+
+[tool.uv.sources]
+streetsense-propagator = { path = "scoring/propagator", editable = true }
 
 [build-system]
 requires = ["hatchling"]

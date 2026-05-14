@@ -52,13 +52,16 @@ Documentation = "https://github.com/streetsense/streetsense/blob/main/scoring/pr
 cmake.version = ">=3.22"
 # Out-of-source build dir, isolated per wheel tag so debug + release
 # coexist without conflicting object files.
-build-dir = "build/{wheel_tag}"
-# Release by default; the `debug` CMake preset (Task 4.1.8) flips this
-# locally via `--config Debug` for the ASan/UBSan run.
+build-dir = "build/skbuild-{wheel_tag}"
+# Release by default; CMake presets override locally for the debug
+# preset's sanitizer run.
 cmake.build-type = "Release"
-# Pull pybind11 from the vendored submodule (Task 4.1.6) rather than the
-# PyPI wheel so the C++ side and Python side track the same version.
-cmake.args = ["-Dpybind11_DIR=${CMAKE_SOURCE_DIR}/external/pybind11/share/cmake/pybind11"]
+# Build only the bindings target -- the engine static lib is a
+# transitive dependency of the bindings, so it builds automatically.
+# Skipping the tests + bench targets keeps wheel builds fast.
+cmake.define.STREETSENSE_PROPAGATOR_BUILD_TESTS = "OFF"
+cmake.define.STREETSENSE_PROPAGATOR_BUILD_BENCH = "OFF"
+cmake.define.STREETSENSE_PROPAGATOR_BUILD_BINDINGS = "ON"
 # Re-run CMake configure when these files change.
 sdist.include = [
     "CMakeLists.txt",
@@ -66,8 +69,10 @@ sdist.include = [
     "include/**/*.h",
     "src/**/*.cc",
     "src/**/*.h",
+    "src/CMakeLists.txt",
     "bindings/**/*.cc",
     "bindings/**/*.h",
+    "bindings/CMakeLists.txt",
     "external/pybind11/**",
 ]
 sdist.exclude = [
