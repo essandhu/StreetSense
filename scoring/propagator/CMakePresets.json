@@ -1,0 +1,78 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default (Release, tests + bench on)",
+      "description": "Release build with tests + benchmarks. No sanitizers. Used by CI's primary build job and `make build-propagator`. Generator is platform-default: Visual Studio on Windows, Makefiles or Ninja on Linux/macOS (override locally via `CMAKE_GENERATOR` env var or a CMakeUserPresets.json).",
+      "binaryDir": "${sourceDir}/build/default",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "STREETSENSE_PROPAGATOR_BUILD_TESTS": "ON",
+        "STREETSENSE_PROPAGATOR_BUILD_BENCH": "ON",
+        "STREETSENSE_PROPAGATOR_BUILD_BINDINGS": "ON",
+        "STREETSENSE_PROPAGATOR_ENABLE_ASAN": "OFF",
+        "STREETSENSE_PROPAGATOR_ENABLE_UBSAN": "OFF"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (ASan + UBSan, tests + bench on)",
+      "description": "Debug build with AddressSanitizer + UndefinedBehaviorSanitizer. Used by CI's debug build job to catch memory + UB bugs. NOTE: UBSan is not supported on MSVC at the time of writing; on Windows the debug preset enables ASan only (UBSan flag is a no-op).",
+      "binaryDir": "${sourceDir}/build/debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "STREETSENSE_PROPAGATOR_BUILD_TESTS": "ON",
+        "STREETSENSE_PROPAGATOR_BUILD_BENCH": "ON",
+        "STREETSENSE_PROPAGATOR_BUILD_BINDINGS": "ON",
+        "STREETSENSE_PROPAGATOR_ENABLE_ASAN": "ON",
+        "STREETSENSE_PROPAGATOR_ENABLE_UBSAN": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "description": "Release build (configure preset: default)."
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "description": "Debug build with sanitizers (configure preset: debug)."
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "description": "GoogleTest suite (Release). Used by CI's `ctest --preset default --output-on-failure`.",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "ignore",
+        "stopOnFailure": false
+      }
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "description": "GoogleTest suite (Debug + sanitizers). ASan reports surface here.",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "ignore",
+        "stopOnFailure": false
+      }
+    }
+  ]
+}
