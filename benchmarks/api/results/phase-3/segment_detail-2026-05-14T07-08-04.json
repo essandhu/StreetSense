@@ -1,0 +1,12 @@
+{
+  "endpoint": "GET /segments/{id}",
+  "t": "2025-06-21T16:00:00+00:00",
+  "segments": 500,
+  "iters_per_segment": 3,
+  "n_samples": 1500,
+  "p50_ms": 26.379,
+  "p95_ms": 34.061,
+  "p99_ms": 38.694,
+  "mean_ms": 26.951,
+  "stdev_ms": 3.945
+}

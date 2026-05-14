@@ -64,7 +64,10 @@ function Invoke-IngestImagery {
 function Invoke-Api {
     Invoke-DbUp
     Invoke-Migrate
-    uv run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+    # Launcher pins the asyncio event-loop policy before uvicorn
+    # spins up its loop (psycopg-pool needs SelectorEventLoop on
+    # Windows; ProactorEventLoop is the default and breaks silently).
+    uv run python -m scripts.serve_api --reload
 }
 
 function Invoke-ScoringRun {

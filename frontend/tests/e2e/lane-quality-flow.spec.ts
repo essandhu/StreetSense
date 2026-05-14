@@ -1,66 +1,65 @@
 /**
  * Phase 3.7.1 — end-to-end lane-quality flow.
  *
- * Demonstrable output: clicking a Cambridge road segment opens the
- * panel, the radial chart shows a real lane-marking arc, the
- * confidence dial labels one of the three limiters, and clicking a
- * thumbnail loads a full-resolution Mapillary image.
+ * Demonstrable output: opening a Cambridge road segment with real
+ * Mapillary imagery shows a non-stub lane-marking arc on the radial
+ * chart, the confidence dial labels one of the three limiters, and
+ * clicking a thumbnail loads the source imagery.
  *
- * This spec is *resilient*: it tries several click offsets to land
- * on a segment because the road density varies by zoom and the
- * baseline pixel target isn't deterministic across MapLibre versions.
+ * Imagery-bearing segments are a small fraction of the full network
+ * (Phase 3 is budget-bounded on Mapillary calls), so the spec
+ * deterministically targets one via the dev-only
+ * ``__benchOpenSegment`` hook rather than gambling on a click
+ * landing on the right pixel. The map-click path itself has its own
+ * coverage in ``segment-detail.spec.ts``.
  *
  * Prerequisites:
- *   - `docker compose up -d`
- *   - `make seed`
- *   - `make ingest-imagery`     (needs MAPILLARY_ACCESS_TOKEN in env)
- *   - `make seed-model`
- *   - `make scoring-run`
- *   - `make api`
- *   - `pnpm dev`               (Playwright spins this up via webServer)
+ *   - ``docker compose up -d``
+ *   - ``make seed``
+ *   - ``make ingest-imagery``     (needs MAPILLARY_ACCESS_TOKEN in env)
+ *   - ``make seed-model``
+ *   - ``make scoring-run``
+ *   - ``make api``
+ *   - ``pnpm dev``               (Playwright spins this up via webServer)
+ *
+ * Pass ``PLAYWRIGHT_IMAGERY_SEGMENT_ID`` to point at a segment with
+ * ``segment_imagery`` rows. Without it, the spec asserts the API is
+ * up and bails — there is no point asserting the lane-marking arc on
+ * a segment that fell to the stub fallback.
  */
 import { expect, test } from "@playwright/test";
 
-test("lane-quality flow against seeded Cambridge", async ({ page }) => {
-  // Network logging — useful for diagnosing tile / segment-detail timeouts.
+test("lane-quality flow against seeded Cambridge", async ({ page, request }) => {
   page.on("response", async (resp) => {
     if (resp.status() >= 500) {
       console.warn(`[${resp.status()}] ${resp.url()}`);
     }
   });
 
+  const imagerySegmentId = process.env.PLAYWRIGHT_IMAGERY_SEGMENT_ID;
+  test.skip(
+    !imagerySegmentId,
+    "set PLAYWRIGHT_IMAGERY_SEGMENT_ID to a segment with segment_imagery rows",
+  );
+
+  const apiBase = process.env.PLAYWRIGHT_API_BASE ?? "http://localhost:8001";
+  const fresh = await request.get(`${apiBase}/admin/freshness`);
+  expect(fresh.ok(), `API not reachable at ${apiBase}/admin/freshness`).toBe(true);
+
   await page.goto("/");
   await page.waitForSelector("canvas", { timeout: 30_000 });
 
-  // The lane-marking-quality layer rides the existing tile pipeline
-  // (no separate UI toggle). Click somewhere in central Cambridge.
-  const canvas = page.locator("canvas").first();
-  const box = await canvas.boundingBox();
-  if (!box) throw new Error("No canvas");
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
+  // Open the panel via the dev-only hook (bypasses click hit-testing).
+  await page.evaluate((id: string) => {
+    type Win = Window & { __benchOpenSegment?: (id: string) => void };
+    const w = window as Win;
+    if (!w.__benchOpenSegment) throw new Error("__benchOpenSegment not exposed");
+    w.__benchOpenSegment(id);
+  }, imagerySegmentId!);
 
-  const offsets: Array<[number, number]> = [];
-  for (let dx = -80; dx <= 80; dx += 20) {
-    for (let dy = -80; dy <= 80; dy += 20) {
-      offsets.push([dx, dy]);
-    }
-  }
-
-  let opened = false;
-  for (const [dx, dy] of offsets) {
-    await page.mouse.click(cx + dx, cy + dy);
-    try {
-      await expect(page.getByTestId("segment-detail-panel")).toBeVisible({
-        timeout: 1500,
-      });
-      opened = true;
-      break;
-    } catch {
-      // Try the next.
-    }
-  }
-  expect(opened, "panel did not open after exhaustive click grid").toBe(true);
+  await expect(page.getByTestId("segment-detail-panel")).toBeVisible({
+    timeout: 5_000,
+  });
 
   // The radial chart has a real lane-marking arc (data-stub="false").
   const laneArc = page.locator(

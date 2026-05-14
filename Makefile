@@ -69,7 +69,11 @@ seed-model: db-up migrate
 	$(UV) run python tools/perception/seed_model.py --artifact $(ARTIFACT) --name $(ARTIFACT_NAME)
 
 api: db-up migrate
-	$(UV) run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+	# Route through scripts/serve_api.py so the asyncio event-loop policy
+	# is pinned before uvicorn constructs its loop. On Windows the
+	# default ProactorEventLoop is incompatible with psycopg's async
+	# pool; the launcher fixes this silently.
+	$(UV) run python -m scripts.serve_api --reload
 
 scoring-run: db-up migrate
 	$(UV) run python -m scoring.cli run --city $(CITY)

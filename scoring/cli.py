@@ -143,24 +143,43 @@ def _load_model_session(minio: Minio, bucket: str, object_key: str) -> ort.Infer
 
 
 def _build_imagery_loader(database_url: str, minio: Minio, bucket: str) -> ImageryLoader:
+    """Build a per-segment imagery loader.
+
+    Pre-loads the full `segment_imagery` index (one query at run start,
+    bounded by row count) and keys it by segment_id. Per-segment loads
+    are then just a dict lookup + per-image MinIO `get_object`. A
+    previous implementation opened a fresh psycopg connection per
+    segment — that cost dominated the scoring-run wall-clock at
+    city scale (~100 ms x 36 k segments = ~1 h of connection setup
+    alone). The in-memory index trades a few MB of RAM for an order
+    of magnitude in wall-clock.
+    """
     dsn = _psycopg_dsn(database_url)
+    index: dict[UUID, list[tuple[str, str]]] = {}
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT segment_id, provider_image_id, object_key
+            FROM segment_imagery
+            ORDER BY segment_id, sample_index
+            """,
+        )
+        for seg_id, provider_image_id, object_key in cur.fetchall():
+            index.setdefault(seg_id, []).append((str(provider_image_id), str(object_key)))
+    log.info(
+        "imagery_loader.indexed",
+        segments_with_imagery=len(index),
+        total_rows=sum(len(v) for v in index.values()),
+    )
 
     def _load(segment_id: UUID) -> Iterable[tuple[str, bytes]]:
-        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT provider_image_id, object_key
-                FROM segment_imagery
-                WHERE segment_id = %s
-                ORDER BY sample_index
-                """,
-                (segment_id,),
-            )
-            rows = cur.fetchall()
+        rows = index.get(segment_id)
+        if not rows:
+            return
         for provider_image_id, object_key in rows:
             response = minio.get_object(bucket, object_key)
             try:
-                yield str(provider_image_id), response.read()
+                yield provider_image_id, response.read()
             finally:
                 response.close()
                 response.release_conn()

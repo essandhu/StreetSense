@@ -7,7 +7,7 @@
  * fires `useSegmentDetail`.
  */
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type maplibregl from "maplibre-gl";
 
 import { GlareOverlay } from "../components/Map/GlareOverlay";
@@ -30,6 +30,19 @@ export const MapView = () => {
     },
     [dispatch],
   );
+
+  // Dev-only hook for benchmark / E2E suites that need to programmatically
+  // open the panel without hitting MapLibre's per-pixel feature-click
+  // probe. Production builds strip this.
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    type BenchWindow = Window & { __benchOpenSegment?: (id: string) => void };
+    const w = window as BenchWindow;
+    w.__benchOpenSegment = (id: string) => dispatch(openSegment(SegmentId(id)));
+    return () => {
+      delete w.__benchOpenSegment;
+    };
+  }, [dispatch]);
 
   if (tileSource.status === "pending") {
     return <div data-testid="map-loading">Loading tile source…</div>;

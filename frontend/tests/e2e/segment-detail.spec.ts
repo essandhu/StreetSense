@@ -1,67 +1,54 @@
 /**
- * Phase 3.6.14 — segment-detail E2E.
+ * Phase 3.6.14 — segment-detail E2E (map-click path).
  *
  * Boots the local stack (Postgres + MinIO + API + dev server) with
  * the seeded Cambridge dataset, clicks a road segment on the map,
- * and asserts:
+ * and asserts the panel + chart + close-button flow.
  *
- *  - The panel opens within 300 ms of click (AC-5).
- *  - The radial chart renders four `<path>` arcs.
- *  - The confidence dial is present.
- *  - At least one thumbnail; clicking opens a lightbox with an image
- *    that has `naturalWidth > 0`.
- *  - Pressing Escape closes the lightbox; clicking the close button
- *    closes the panel.
+ * Open-to-render *latency* is measured in the dedicated benchmark
+ * (``benchmarks/frontend/segment_detail_open.spec.ts``) — that uses
+ * the bench window hook for a deterministic measurement. Here we
+ * only care that the click hit-testing path works end-to-end.
  */
 import { expect, test } from "@playwright/test";
-
-const OPEN_BUDGET_MS = 300;
 
 test.describe("Segment detail flow", () => {
   test("click segment → panel → chart → thumbnail → lightbox", async ({ page }) => {
     await page.goto("/");
-    // Wait for MapLibre to mount and render the road-segments layer.
     await page.waitForSelector("canvas", { timeout: 20_000 });
 
-    // Click somewhere over Cambridge. The exact pixel is approximate;
-    // the SegmentDetailPanel listens for any feature click in the
-    // road-segments layer.
     const canvas = page.locator("canvas").first();
     const box = await canvas.boundingBox();
     if (!box) throw new Error("MapLibre canvas not found");
 
-    // Several click attempts in a small grid to land on a segment line.
+    // Sweep a small grid; road density at the default zoom is
+    // sparse enough that the first click often misses. Each attempt
+    // is fast (sub-second) because we cap the wait per click.
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
-    const offsets: Array<[number, number]> = [
-      [0, 0],
-      [-40, 0],
-      [40, 0],
-      [0, -40],
-      [0, 40],
-      [-30, -30],
-      [30, 30],
-    ];
-    const start = Date.now();
-    for (const [dx, dy] of offsets) {
-      await page.mouse.click(cx + dx, cy + dy);
-      const panel = page.getByTestId("segment-detail-panel");
-      try {
-        await expect(panel).toBeVisible({ timeout: 1000 });
-        break;
-      } catch {
-        // Try the next offset.
+    const offsets: Array<[number, number]> = [];
+    for (let dx = -80; dx <= 80; dx += 20) {
+      for (let dy = -80; dy <= 80; dy += 20) {
+        offsets.push([dx, dy]);
       }
     }
-    await expect(page.getByTestId("segment-detail-panel")).toBeVisible({ timeout: 5000 });
-    const elapsedMs = Date.now() - start;
-    test.info().annotations.push({
-      type: "panel-open-ms",
-      description: String(elapsedMs),
-    });
-    expect(elapsedMs).toBeLessThan(OPEN_BUDGET_MS * 10);
 
-    // 4 arcs.
+    let opened = false;
+    for (const [dx, dy] of offsets) {
+      await page.mouse.click(cx + dx, cy + dy);
+      try {
+        await expect(page.getByTestId("segment-detail-panel")).toBeVisible({
+          timeout: 750,
+        });
+        opened = true;
+        break;
+      } catch {
+        // Next offset.
+      }
+    }
+    expect(opened, "no click landed on a road segment").toBe(true);
+
+    // 4 arcs always render.
     const arcs = page.locator(
       '[data-testid="segment-detail-panel"] svg [data-arc-name]',
     );
@@ -71,19 +58,20 @@ test.describe("Segment detail flow", () => {
     const limiterLabel = await page.getByTestId("confidence-limiter-label").textContent();
     expect(["Freshness", "Coverage", "Model"]).toContain(limiterLabel?.trim());
 
-    // Thumbnail click → lightbox.
+    // Thumbnails (the clicked segment may or may not have imagery —
+    // most Cambridge segments fell to the stub fallback in Phase 3's
+    // budget-bounded ingest; assert the lightbox flow only when
+    // thumbnails are present).
     const thumbnails = page.getByTestId("segment-detail-thumbnail");
     const count = await thumbnails.count();
     if (count > 0) {
       await thumbnails.first().click();
       const lightbox = page.getByTestId("segment-detail-lightbox");
       await expect(lightbox).toBeVisible();
-      // The lightbox image has loaded (naturalWidth > 0).
-      const naturalWidth = await lightbox.locator("img").evaluate(
-        (img: HTMLImageElement) => img.naturalWidth,
-      );
+      const naturalWidth = await lightbox
+        .locator("img")
+        .evaluate((img: HTMLImageElement) => img.naturalWidth);
       expect(naturalWidth).toBeGreaterThan(0);
-      // Escape closes lightbox.
       await page.keyboard.press("Escape");
       await expect(lightbox).toBeHidden();
     }
