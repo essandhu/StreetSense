@@ -11,4 +11,15 @@ Phase 4.1: empty package scaffold; real content lands in Phase 4.3 — see
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from . import influence_diffusion
+from .types import Edge, GraphData, NodeId, Params, UpliftMap, is_valid
+
+__all__ = [
+    "Edge",
+    "GraphData",
+    "NodeId",
+    "Params",
+    "UpliftMap",
+    "influence_diffusion",
+    "is_valid",
+]

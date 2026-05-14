@@ -36,6 +36,10 @@ dependencies = [
     "jsonschema>=4.23",
     # Hashing for stub risk
     "xxhash>=3.5",
+    # Graph operations for the pure-Python propagator reference impl
+    # (Phase 4.3). Used by the C++-vs-Python parity property test
+    # (Phase 4.4.4) and the python_vs_cpp speedup benchmark (Phase 4.8.5).
+    "networkx>=3.0",
 ]
 
 [dependency-groups]
@@ -123,8 +127,13 @@ python_version = "3.12"
 strict = true
 files = ["api", "scoring", "ingestion"]
 # Vendored third-party submodule (Phase 4.1.6) — pybind11 ships its own
-# tests that don't meet mypy --strict.
-exclude = ["scoring/propagator/external/"]
+# tests that don't meet mypy --strict. Also exclude the CMake build
+# tree (Phase 4.2.7+) — FetchContent pulls GoogleTest/Benchmark/spdlog
+# source into build/_deps/ which has its own Python source.
+exclude = [
+    "scoring/propagator/external/",
+    "scoring/propagator/build/",
+]
 warn_unused_configs = true
 warn_redundant_casts = true
 warn_unused_ignores = true
@@ -148,6 +157,7 @@ module = [
     "onnxruntime.*",
     "PIL.*",
     "minio.*",
+    "networkx.*",
 ]
 ignore_missing_imports = true
 
