@@ -143,9 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "imagery",
         help="Ingest street-level imagery references for the configured city (Phase 3).",
     )
-    imagery.add_argument(
-        "--city", required=True, help="City config slug (e.g., cambridge)."
-    )
+    imagery.add_argument("--city", required=True, help="City config slug (e.g., cambridge).")
 
     args = parser.parse_args(argv)
     if args.cmd == "seed":
