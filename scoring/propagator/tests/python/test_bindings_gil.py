@@ -16,7 +16,6 @@ import threading
 import time
 
 import pytest
-
 import streetsense_propagator
 
 

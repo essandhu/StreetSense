@@ -7,7 +7,6 @@ exercise algorithm correctness -- that's the parity test's job.
 from __future__ import annotations
 
 import pytest
-
 import streetsense_propagator
 
 
