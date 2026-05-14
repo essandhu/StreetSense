@@ -1,0 +1,3 @@
+[submodule "scoring/propagator/external/pybind11"]
+	path = scoring/propagator/external/pybind11
+	url = https://github.com/pybind/pybind11.git
