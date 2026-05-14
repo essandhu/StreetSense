@@ -1,0 +1,14 @@
+"""Pure-Python reference implementation of the StreetSense propagator.
+
+The C++ engine in ``scoring/propagator/src/`` is the production codepath; this
+package mirrors it byte-equivalent for randomly generated graphs and is the
+**correctness oracle** for the parity property tests in Phase 4.4.
+
+Phase 4.1: empty package scaffold; real content lands in Phase 4.3 — see
+``conductor/tracks/phase-4-propagator/plan.md`` for the task breakdown and
+``scoring/propagator/README.md`` for the local-dev setup.
+"""
+
+from __future__ import annotations
+
+__all__: list[str] = []

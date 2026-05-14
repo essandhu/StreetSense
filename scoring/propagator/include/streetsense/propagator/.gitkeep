@@ -1,0 +1,5 @@
+# Public C++ headers live here. Phase 4.2 adds:
+#   - graph.h         (GraphData adjacency-list struct)
+#   - strategy.h      (PropagationStrategy abstract base)
+#   - registry.h      (StrategyRegistry singleton)
+#   - version.h       (kAlgorithmVersion constants per strategy)
