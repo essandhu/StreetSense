@@ -46,9 +46,11 @@ option(STREETSENSE_PROPAGATOR_ENABLE_UBSAN "Enable UndefinedBehaviorSanitizer (d
 include(FetchContent)
 
 # spdlog: structured logging inside the propagator. MIT.
+# v1.14.1 -- bumped from v1.12.0 because the bundled fmt in 1.12 trips
+# `make_checked` errors on MSVC 19.5x (resolved upstream in 1.13+).
 FetchContent_Declare(spdlog
     GIT_REPOSITORY https://github.com/gabime/spdlog.git
-    GIT_TAG        v1.12.0
+    GIT_TAG        v1.14.1
     GIT_SHALLOW    TRUE
 )
 

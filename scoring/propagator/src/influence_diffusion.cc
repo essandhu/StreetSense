@@ -19,6 +19,7 @@
 //   - conductor/tracks/phase-4-propagator/plan.md Task 4.2.7
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <memory>
@@ -28,6 +29,7 @@
 #include <vector>
 
 #include <boost/graph/adjacency_list.hpp>
+#include <spdlog/spdlog.h>
 
 #include "streetsense/propagator/graph.h"
 #include "streetsense/propagator/registry.h"
@@ -89,6 +91,8 @@ std::vector<int> bfs_k_bounded(const BglGraph& graph, std::size_t source, int k_
 class InfluenceDiffusion : public PropagationStrategy {
 public:
     UpliftMap propagate(const GraphData& graph, const Params& params) const override {
+        const auto t_start = std::chrono::steady_clock::now();
+
         UpliftMap uplift;
         uplift.reserve(graph.node_ids.size());
         // Initialize every node to zero uplift so callers can iterate
@@ -100,6 +104,12 @@ public:
         const BglGraph bgl = to_bgl(graph);
         const int k_max = std::max(1, params.k_hop_radius);
         const double decay = params.decay_weight;
+
+        // Edge count for telemetry (computed once, not per source).
+        std::size_t edge_count = 0;
+        for (const auto& neighbors : graph.adjacency) {
+            edge_count += neighbors.size();
+        }
 
         for (std::size_t source = 0; source < graph.node_ids.size(); ++source) {
             const std::vector<int> distance = bfs_k_bounded(bgl, source, k_max);
@@ -127,6 +137,19 @@ public:
                 }
             }
         }
+
+        const auto elapsed_us = std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now() - t_start)
+                                    .count();
+        spdlog::debug(
+            "influence-diffusion: nodes={} edges={} k={} decay={} normalize={} elapsed_us={}",
+            graph.node_ids.size(),
+            edge_count,
+            params.k_hop_radius,
+            params.decay_weight,
+            params.normalize,
+            elapsed_us);
+
         return uplift;
     }
 

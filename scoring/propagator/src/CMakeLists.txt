@@ -24,6 +24,10 @@ find_path(BOOST_GRAPH_INCLUDE_DIR
 )
 message(STATUS "Boost.Graph headers found at: ${BOOST_GRAPH_INCLUDE_DIR}")
 
+# spdlog is declared at the project root; pull it in here so
+# propagator_engine can use it for structured per-call logging.
+FetchContent_MakeAvailable(spdlog)
+
 add_library(propagator_engine STATIC
     graph.cc
     influence_diffusion.cc
@@ -35,6 +39,8 @@ target_include_directories(propagator_engine
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
         ${BOOST_GRAPH_INCLUDE_DIR}
 )
+
+target_link_libraries(propagator_engine PRIVATE spdlog::spdlog)
 
 # C++17 propagated to consumers via INTERFACE.
 target_compile_features(propagator_engine PUBLIC cxx_std_17)
