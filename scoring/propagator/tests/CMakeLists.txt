@@ -9,12 +9,20 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(propagator_unit_tests
     test_graph.cc
+    test_influence_diffusion.cc
     test_registry.cc
 )
 
 target_link_libraries(propagator_unit_tests
     PRIVATE
-        propagator_engine
+        # WHOLE_ARCHIVE forces the linker to keep all .obj files from
+        # propagator_engine, including those whose only symbols are the
+        # static-init self-registration entries (e.g.,
+        # registered_influence_diffusion in strategies/influence_diffusion.cc).
+        # MSVC's linker otherwise discards .obj files whose symbols are
+        # not directly referenced by the executable -- silently
+        # un-registering every strategy.
+        $<LINK_LIBRARY:WHOLE_ARCHIVE,propagator_engine>
         GTest::gtest
         GTest::gtest_main
 )

@@ -5,14 +5,35 @@
 # Bindings (Phase 4.4) and tests (Phase 4.2.2+) link against this
 # target.
 
+# Boost.Graph is header-only; we resolve its include directory via a
+# portable find_path so this works across Linux (apt: /usr/include),
+# macOS (brew: /opt/homebrew/include), and Windows (manual install:
+# $ENV{BOOST_ROOT}). CMake's FindBoost module was removed in 4.x;
+# Boost CONFIG-mode files don't ship with the manual Windows tarball.
+find_path(BOOST_GRAPH_INCLUDE_DIR
+    NAMES boost/graph/adjacency_list.hpp
+    HINTS
+        $ENV{BOOST_ROOT}
+        $ENV{Boost_DIR}
+    PATHS
+        /usr/include
+        /usr/local/include
+        /opt/homebrew/include
+        /opt/local/include
+    REQUIRED
+)
+message(STATUS "Boost.Graph headers found at: ${BOOST_GRAPH_INCLUDE_DIR}")
+
 add_library(propagator_engine STATIC
     graph.cc
+    influence_diffusion.cc
     registry.cc
 )
 
 target_include_directories(propagator_engine
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/../include
+        ${BOOST_GRAPH_INCLUDE_DIR}
 )
 
 # C++17 propagated to consumers via INTERFACE.
