@@ -1,18 +1,29 @@
 # scoring/propagator/bench/CMakeLists.txt
 #
-# Phase 4.1.7 placeholder. The first Google Benchmark suite lands in
-# Phase 4.8.3 (`propagator_bench` — 1k / 50k / 500k-edge graphs). When
-# that lands, this file calls FetchContent_MakeAvailable(benchmark) and
-# wires the executable.
+# Phase 4.8.3: Google Benchmark suite for the C++ propagator. Three
+# size classes (1k / 50k / 500k edges) exercise the production
+# algorithm under realistic city-scale graphs.
 #
 # Refs:
-#   - conductor/tracks/phase-4-propagator/plan.md Phase 4.8 (Tasks 4.8.3–4.8.5)
-#   - top-level CMakeLists.txt (declares Google Benchmark FetchContent at v1.8.3)
-#   - benchmarks/propagator/history.jsonl (regression gate — >10% blocks PR)
+#   - propagator_bench.cc (the suite source)
+#   - scripts/check_propagator_perf_regression.py (the > 10 % gate)
+#   - benchmarks/propagator/history.jsonl (regression history)
 
-# Future Phase 4.8.3 wiring (sketch):
-#   FetchContent_MakeAvailable(benchmark)
-#   add_executable(propagator_bench propagator_bench.cc)
-#   target_link_libraries(propagator_bench
-#       PRIVATE propagator_engine benchmark::benchmark_main
-#   )
+FetchContent_MakeAvailable(benchmark)
+
+add_executable(propagator_bench propagator_bench.cc)
+target_link_libraries(propagator_bench
+    PRIVATE
+        propagator_engine
+        benchmark::benchmark_main
+)
+target_compile_features(propagator_bench PRIVATE cxx_std_17)
+
+# Match the engine's warning posture so a fresh contributor catches
+# the same issues at build time. Treat warnings as errors only on the
+# CI runners (the propagator-cpp job sets CTEST_OUTPUT_ON_FAILURE).
+if(MSVC)
+    target_compile_options(propagator_bench PRIVATE /W4 /permissive-)
+else()
+    target_compile_options(propagator_bench PRIVATE -Wall -Wextra -Wpedantic)
+endif()
