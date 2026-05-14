@@ -59,6 +59,13 @@ model-export = [
     "torch>=2.5",
     "transformers>=4.46",
 ]
+# `onnx` (the protobuf schema library) is used by
+# tools/perception/build_standin_onnx.py to build the tiny CI stand-in
+# without pulling torch. Separate from `model-export` so devs can rebuild
+# the stand-in without the ~1.5 GB torch download.
+onnx-tools = [
+    "onnx>=1.17",
+]
 
 [build-system]
 requires = ["hatchling"]

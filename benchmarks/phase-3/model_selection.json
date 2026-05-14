@@ -1,0 +1,57 @@
+[
+  {
+    "label": "standin",
+    "model_path": "tests\\fixtures\\perception\\standin.onnx",
+    "model_sha256": "8a1627c46d58990c880f95e4ce68e28e3a46d81fbcdae1fbd207ee7d8cea9cdb",
+    "model_size_bytes": 422,
+    "decision_threshold": 0.5,
+    "elapsed_ms_total": 17.299,
+    "ms_per_image": 3.46,
+    "f1": 0.75,
+    "precision": 0.6,
+    "recall": 1.0,
+    "per_image": [
+      {
+        "fixture": "01_obvious_lane_markings.png",
+        "ground_truth": true,
+        "predicted_value": 0.5454357266426086,
+        "predicted_uncertainty": 0.041204020380973816,
+        "prediction": true,
+        "match": true
+      },
+      {
+        "fixture": "02_faded_lane_markings.png",
+        "ground_truth": true,
+        "predicted_value": 0.5410418510437012,
+        "predicted_uncertainty": 0.02206348069012165,
+        "prediction": true,
+        "match": true
+      },
+      {
+        "fixture": "03_no_lane_markings.png",
+        "ground_truth": false,
+        "predicted_value": 0.5382035970687866,
+        "predicted_uncertainty": 0.018410418182611465,
+        "prediction": true,
+        "match": false
+      },
+      {
+        "fixture": "04_obstructed.png",
+        "ground_truth": false,
+        "predicted_value": 0.5397176742553711,
+        "predicted_uncertainty": 0.03340750187635422,
+        "prediction": true,
+        "match": false
+      },
+      {
+        "fixture": "05_lighting_edge_case.png",
+        "ground_truth": true,
+        "predicted_value": 0.5379664897918701,
+        "predicted_uncertainty": 0.03840918838977814,
+        "prediction": true,
+        "match": true
+      }
+    ],
+    "note": "Synthetic 5-image validation per ADR 0004. F1 here is a protocol number, not a Cambridge F1. Real-Cambridge validation is the follow-up trigger."
+  }
+]

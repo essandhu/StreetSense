@@ -29,12 +29,13 @@ UV   ?= uv
 PNPM ?= pnpm
 
 .DEFAULT_GOAL := help
-.PHONY: help seed ingest-imagery api scoring-run test lint db-up db-down migrate clean
+.PHONY: help seed ingest-imagery seed-model api scoring-run test lint db-up db-down migrate clean
 
 help:
 	@printf 'Targets:\n'
 	@printf '  make seed CITY=<slug>   Ingest city OSM into Postgres (default: cambridge)\n'
 	@printf '  make ingest-imagery CITY=<slug>  Ingest street-level imagery (Phase 3)\n'
+	@printf '  make seed-model         Upload perception ONNX artifact to MinIO (Phase 3)\n'
 	@printf '  make api                Start FastAPI service\n'
 	@printf '  make scoring-run        Trigger a scoring run (Phase 1: stub)\n'
 	@printf '  make test               Run Python + frontend unit tests\n'
@@ -58,6 +59,14 @@ seed: db-up migrate
 
 ingest-imagery: db-up migrate
 	$(UV) run python -m ingestion.cli imagery --city $(CITY)
+
+# Phase 3: upload the perception ONNX artifact to MinIO. Defaults to the
+# stand-in; pass ARTIFACT=path/to/real-model.onnx to upload a different
+# artifact produced by tools/perception/build_real_onnx.py.
+ARTIFACT ?= tests/fixtures/perception/standin.onnx
+ARTIFACT_NAME ?= lane-marking-standin
+seed-model: db-up migrate
+	$(UV) run python tools/perception/seed_model.py --artifact $(ARTIFACT) --name $(ARTIFACT_NAME)
 
 api: db-up migrate
 	$(UV) run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
