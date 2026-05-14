@@ -60,11 +60,12 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="StreetSense API",
-        # Phase 3 (3.0, breaking): `confidence` reshapes from a scalar
-        # float to a `ConfidenceIndicator` object so the UI can label
-        # the limiting input; `imagery` ships in `SegmentDetail` with
-        # pre-signed MinIO URLs.
-        version="3.0.0",
+        # Phase 4 (4.0, non-breaking add): SegmentDetail gains
+        # ``propagation_uplift``, ``local_contribution``, and a typed
+        # ``propagation_algorithm`` block so the composite-risk
+        # decomposition is first-class. /admin/freshness reports the
+        # two new Phase 4 sources (incidents, propagation_algorithm).
+        version="4.0.0",
         lifespan=_lifespan,
     )
     app.add_middleware(

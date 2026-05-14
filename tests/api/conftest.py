@@ -64,8 +64,10 @@ def seed_data_sources(owner_conn: psycopg.Connection[Any]) -> None:
     Phase 2: `solar_position` (compute source — migration 0005).
     Phase 3: `imagery` (migration 0009) with real metadata; and
     `perception_model` once `make seed-model` has run.
+    Phase 4: `incidents` (migration 0014) populated by
+    `make ingest-incidents`; `propagation_algorithm` (migration 0014).
 
-    The Phase 3 freshness endpoint surfaces all four.
+    The Phase 4 freshness endpoint surfaces all six.
     """
     with owner_conn.cursor() as cur:
         cur.execute("DELETE FROM data_sources")
@@ -80,7 +82,11 @@ def seed_data_sources(owner_conn: psycopg.Connection[Any]) -> None:
                 ('solar_position',   now(),
                  '{"kind": "compute", "library": "pvlib", "model": "nrel-spa"}'::jsonb),
                 ('perception_model', now() - interval '10 minutes',
-                 '{"kind": "model", "perception_model_version": "lane-marking-standin-deadbeef", "object_key": "lane-marking-standin-deadbeef/lane-marking-standin.onnx", "bucket": "streetsense-models"}'::jsonb)
+                 '{"kind": "model", "perception_model_version": "lane-marking-standin-deadbeef", "object_key": "lane-marking-standin-deadbeef/lane-marking-standin.onnx", "bucket": "streetsense-models"}'::jsonb),
+                ('incidents',        now() - interval '2 minutes',
+                 '{"kind": "fetch", "provider": "massdot-impact", "adr": "0007-incident-dataset", "license": "public-records"}'::jsonb),
+                ('propagation_algorithm', now() - interval '30 seconds',
+                 '{"kind": "compute", "library": "streetsense_propagator", "adr": "0006-propagation-algorithm", "algorithm": "influence-diffusion"}'::jsonb)
             """
         )
     owner_conn.commit()

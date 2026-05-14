@@ -29,11 +29,37 @@ from api.db import conn
 from api.schemas import (
     ConfidenceIndicator,
     ImageryReference,
+    PropagationAlgorithmInfo,
     SegmentDetail,
     SubScore,
     SubScores,
 )
 from api.scoring_stub import stub_risk
+
+# Phase 2 sentinel persisted in scoring_runs.propagation_algorithm_version
+# before Phase 4 ships a real propagator. SegmentDetail emits
+# ``propagation_algorithm = None`` when this is observed so the UI can
+# render the legacy Phase 2/3 segment-detail view without a fake algo
+# label.
+_PHASE_2_PROPAGATION_SENTINEL = "none-phase-2"
+
+
+def _parse_propagation_version(version: str | None) -> PropagationAlgorithmInfo | None:
+    """Split a persisted ``<name>-<semver>`` string into the typed pair.
+
+    Phase 4 writes e.g. ``"influence-diffusion-0.1.0"``; the
+    ``rsplit("-", 1)`` gives the algorithm name and the semver. Returns
+    ``None`` for empty values or the pre-Phase-4 sentinel.
+    """
+    if not version or version == _PHASE_2_PROPAGATION_SENTINEL:
+        return None
+    name, sep, semver = version.rpartition("-")
+    if not sep or not name:
+        # Garbled value: surface the whole string as the name to keep
+        # the response well-typed; the UI can flag this if needed.
+        return PropagationAlgorithmInfo(name=version, version="")
+    return PropagationAlgorithmInfo(name=name, version=semver)
+
 
 router = APIRouter(prefix="/segments", tags=["segments"])
 
@@ -80,6 +106,7 @@ SELECT
     rs.osm_way_id    AS osm_way_id,
     rs.attrs         AS attrs,
     ss.composite_risk,
+    ss.propagation_uplift,
     ss.sub_score_lane_marking,
     ss.sub_score_glare,
     ss.sub_score_junction_complexity,
@@ -89,7 +116,8 @@ SELECT
     ss.is_stub_glare,
     ss.is_stub_junction_complexity,
     ss.is_stub_historical,
-    ss.scoring_run_timestamp
+    ss.scoring_run_timestamp,
+    sr.propagation_algorithm_version
 FROM road_segments rs
 LEFT JOIN LATERAL (
     SELECT *
@@ -108,6 +136,7 @@ LEFT JOIN LATERAL (
       END ASC
     LIMIT 1
 ) ss ON true
+LEFT JOIN scoring_runs sr ON sr.id = ss.scoring_run_id
 WHERE rs.id = %(id)s
 """
 
@@ -216,6 +245,7 @@ async def get_segment(
         osm_way_id,
         attrs,
         composite_risk,
+        propagation_uplift,
         sub_lane,
         sub_glare,
         sub_junction,
@@ -226,6 +256,7 @@ async def get_segment(
         is_stub_junction,
         is_stub_historical,
         scoring_run_timestamp,
+        propagation_algorithm_version,
     ) = row
 
     # Load imagery rows once. Used both for the response `imagery`
@@ -266,6 +297,9 @@ async def get_segment(
             segment_id=seg_id,
             osm_way_id=osm_way_id,
             composite_risk=stub.composite,
+            local_contribution=stub.composite,
+            propagation_uplift=0.0,
+            propagation_algorithm=None,
             sub_scores=SubScores(
                 lane_marking_quality=_build_subscore(
                     stub.sub_scores.lane_marking_quality, is_stub=True, confidence=0.0
@@ -296,10 +330,16 @@ async def get_segment(
             "model_uncertainty": model_uncertainty,
         }
 
+    uplift_value = float(propagation_uplift) if propagation_uplift is not None else 0.0
+    composite_value = float(composite_risk)
+    local_value = max(0.0, composite_value - uplift_value)
     return SegmentDetail(
         segment_id=seg_id,
         osm_way_id=osm_way_id,
-        composite_risk=float(composite_risk),
+        composite_risk=composite_value,
+        local_contribution=local_value,
+        propagation_uplift=uplift_value,
+        propagation_algorithm=_parse_propagation_version(propagation_algorithm_version),
         sub_scores=SubScores(
             lane_marking_quality=_build_subscore(
                 None if sub_lane is None else float(sub_lane),

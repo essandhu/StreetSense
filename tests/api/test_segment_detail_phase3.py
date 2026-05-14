@@ -67,7 +67,7 @@ def _seed_real_score_for(
         cur.execute(
             """
             INSERT INTO segment_scores (
-                segment_id, composite_risk,
+                segment_id, composite_risk, propagation_uplift,
                 sub_score_lane_marking, sub_score_glare,
                 sub_score_junction_complexity, sub_score_historical,
                 confidence,
@@ -78,7 +78,7 @@ def _seed_real_score_for(
                 imagery_capture_window, propagation_algorithm_version
             )
             VALUES (
-                %s, %s,
+                %s, %s, 0.0,
                 0.55, 0.30,
                 0.0, 0.0,
                 %s,

@@ -11,6 +11,13 @@ API version history:
   float to a ``ConfidenceIndicator`` object so the UI can label which
   input is the limiter; a new ``imagery`` list ships in
   ``SegmentDetail`` carrying pre-signed MinIO URLs for source imagery.
+- 4.0 (Phase 4, **non-breaking add**): ``SegmentDetail`` gains
+  ``propagation_uplift``, ``local_contribution``, and a typed
+  ``propagation_algorithm`` block so the API can ship the
+  composite-risk decomposition (per spec.md §"Explainability"). All
+  four sub-scores carry ``is_stub=False`` in steady-state Phase 4
+  responses (the registry's ``real_since_phase`` bumped to 4 for the
+  two new scorers).
 
 Branded UUID types: `SegmentId`, `RunId`. Typed ``UUID`` at runtime; the
 type alias gives a strong handle when reading IDE / mypy output.
@@ -98,6 +105,33 @@ class ImageryReference(BaseModel):
     camera_params: dict[str, Any] = Field(default_factory=dict)
 
 
+class PropagationAlgorithmInfo(BaseModel):
+    """Composite-risk propagator identity + parameters.
+
+    Surfaced in :class:`SegmentDetail` so the UI can label the
+    composite-breakdown panel with the algorithm name + semver. Reads
+    from ``scoring_runs.propagation_algorithm_version`` (Phase 4
+    onwards a real ``"<name>-<semver>"`` string; pre-Phase-4 rows
+    carry the ``"none-phase-2"`` sentinel).
+    """
+
+    name: str = Field(
+        ...,
+        description=(
+            'Stable algorithm identifier (e.g., ``"influence-diffusion"``). '
+            "Empty when the row predates Phase 4 (sentinel branch)."
+        ),
+    )
+    version: str = Field(
+        ...,
+        description=(
+            'Algorithm semver (e.g., ``"0.1.0"``). Combined with ``name`` '
+            "this reconstructs the persisted ``propagation_algorithm_version`` "
+            "string."
+        ),
+    )
+
+
 class SegmentDetail(BaseModel):
     """Per-segment detail payload returned by GET /segments/{id}.
 
@@ -105,6 +139,11 @@ class SegmentDetail(BaseModel):
     ``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries
     pre-signed URLs for the source images that backed
     ``sub_scores.lane_marking_quality``.
+
+    Phase 4 (API 4.0, non-breaking add): ``propagation_uplift`` and
+    ``local_contribution`` split ``composite_risk`` into its
+    explainable components; ``propagation_algorithm`` carries the
+    propagator identity + semver from the most recent scoring run.
     """
 
     segment_id: UUID
@@ -112,9 +151,33 @@ class SegmentDetail(BaseModel):
     composite_risk: float = Field(
         ...,
         description=(
-            "Composite risk in [0, 1]. Phase 3: mean of real sub-scores "
-            "(glare + lane_marking). Phase 4 ships the weighted composite "
-            "from the propagator."
+            "Composite risk. Phase 4: ``local_contribution + "
+            "propagation_uplift``. The upper bound depends on the active "
+            "composite weights (recorded in ADR 0006's parameters)."
+        ),
+    )
+    local_contribution: float = Field(
+        0.0,
+        description=(
+            "Weighted local aggregate of the four sub-scores at this "
+            "(segment, t). Phase 4: the same quantity the propagator "
+            "received as the per-node input vector."
+        ),
+    )
+    propagation_uplift: float = Field(
+        0.0,
+        description=(
+            "Network contribution to composite risk — the portion that "
+            "would not exist without the propagator. Phase 4: read "
+            "directly from ``segment_scores.propagation_uplift``."
+        ),
+    )
+    propagation_algorithm: PropagationAlgorithmInfo | None = Field(
+        None,
+        description=(
+            "Identity of the propagator that produced ``propagation_uplift``. "
+            "``None`` for pre-Phase 4 rows where the persisted "
+            '``propagation_algorithm_version`` is the sentinel ``"none-phase-2"``.'
         ),
     )
     sub_scores: SubScores
