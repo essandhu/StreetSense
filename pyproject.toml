@@ -15,13 +15,21 @@ dependencies = [
     "psycopg[binary]>=3.2",
     "psycopg-pool>=3.2",
     "alembic>=1.13",
-    "httpx>=0.27",
+    # HTTP/2 enabled for Mapillary (ADR 0005) and any future high-fan-out
+    # imagery providers.
+    "httpx[http2]>=0.27",
     # Geo
     "shapely>=2.0",
     "pyproj>=3.7",
     "osmium>=4.0",
     # Solar geometry (Phase 2 environmental scorer). See ADR 0003.
     "pvlib>=0.11",
+    # Perception scorer (Phase 3). See ADR 0004.
+    "onnxruntime>=1.19",
+    "pillow>=10.4",
+    # Object store (MinIO). Used by ingestion/imagery and api for
+    # pre-signed URL assembly.
+    "minio>=7.2",
     # Logging / config
     "structlog>=24.4",
     "pyyaml>=6.0",
@@ -43,6 +51,13 @@ dev = [
     "pytest-asyncio>=0.24",
     "hypothesis>=6.115",
     "vcrpy>=6.0",
+]
+# Heavy ML deps used only by tools/perception/build_real_onnx.py to convert
+# a pretrained semantic-segmentation model to ONNX once during track setup.
+# Not installed in CI or in the API/scoring runtime images. See ADR 0004.
+model-export = [
+    "torch>=2.5",
+    "transformers>=4.46",
 ]
 
 [build-system]
@@ -117,6 +132,9 @@ module = [
     "xxhash.*",
     "pvlib.*",
     "pandas.*",
+    "onnxruntime.*",
+    "PIL.*",
+    "minio.*",
 ]
 ignore_missing_imports = true
 
