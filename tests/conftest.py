@@ -68,8 +68,11 @@ def migrated_db(database_url: str) -> str:
     """Run `alembic upgrade head` once per session; yield the raw psycopg DSN."""
     env = os.environ.copy()
     env["DATABASE_URL"] = database_url
+    # Use the current interpreter's alembic so Windows paths without
+    # alembic.exe on PATH still work, and so tests pick up the same
+    # migration code that the developer's venv resolves.
     result = subprocess.run(
-        ["alembic", "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=REPO_ROOT,
         env=env,
         capture_output=True,

@@ -222,6 +222,69 @@ class TestSegmentScoresReproducibility:
             owner_conn.rollback()
 
 
+# --- Phase 4: composite_risk + propagation_uplift NOT NULL ---------------
+PHASE_4_REQUIRED_COLUMNS = ("composite_risk", "propagation_uplift")
+
+
+class TestSegmentScoresPhase4Columns:
+    @pytest.mark.parametrize("column", PHASE_4_REQUIRED_COLUMNS)
+    def test_column_exists_and_not_null(
+        self, owner_conn: psycopg.Connection[Any], column: str
+    ) -> None:
+        cols = _column_info(owner_conn, column.split(".")[0] if "." in column else "segment_scores")
+        assert column in cols, f"segment_scores missing Phase 4 column {column}"
+        data_type, is_nullable, _ = cols[column]
+        assert data_type == "double precision"
+        assert is_nullable == "NO", f"{column} must be NOT NULL (reproducibility gate)"
+
+    def test_insert_omitting_propagation_uplift_fails(
+        self, owner_conn: psycopg.Connection[Any]
+    ) -> None:
+        """propagation_uplift NOT NULL trips on omission; composite_risk
+        already has the same coverage in TestSegmentScoresReproducibility's
+        loop indirectly (it's a NOT NULL non-default column from
+        migration 0001), so the explicit assert here is for the column
+        Phase 4 added."""
+        with owner_conn.cursor() as cur:
+            cur.execute("SELECT id FROM road_segments LIMIT 1")
+            row = cur.fetchone()
+            if row is None:
+                cur.execute(
+                    """
+                    INSERT INTO road_segments (geometry, osm_way_id, attrs)
+                    VALUES (
+                        ST_SetSRID(ST_MakeLine(ST_MakePoint(0,0), ST_MakePoint(1,1)), 4326),
+                        1, '{}'::jsonb
+                    )
+                    RETURNING id
+                    """
+                )
+                row = cur.fetchone()
+                assert row is not None
+            segment_id = row[0]
+        owner_conn.commit()
+
+        with owner_conn.cursor() as cur, pytest.raises(pg_errors.NotNullViolation):
+            cur.execute(
+                """
+                INSERT INTO segment_scores (
+                    segment_id, composite_risk,
+                    scoring_run_id, scoring_run_timestamp,
+                    perception_model_version, osm_snapshot_date,
+                    imagery_capture_window, propagation_algorithm_version
+                ) VALUES (
+                    %s, 0.0,
+                    '00000000-0000-0000-0000-000000000002',
+                    '2026-01-01T00:00:00Z',
+                    'v0.0.0-stub', '2026-01-01',
+                    '[2026-01-01,2026-01-02)', 'v0.0.0-stub'
+                )
+                """,
+                (segment_id,),
+            )
+        owner_conn.rollback()
+
+
 # --- Per-sub-score is_stub_* flags (Phase 2.3.3) --------------------------
 SUB_SCORE_STUB_COLUMNS = (
     "is_stub_lane_marking",

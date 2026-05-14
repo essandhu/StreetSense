@@ -29,24 +29,46 @@ depends_on: Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    # `metadata` is the JSONB column on data_sources (migration 0002).
+    # The ``/admin/freshness`` endpoint reads ``name`` + ``last_ingested_at``
+    # + selected metadata keys; the keys here mirror the conventions
+    # established by migrations 0005 (solar_position) and 0009 (imagery):
+    # ``kind`` classifies the source (``fetch`` / ``compute`` / ``model``)
+    # and ``adr`` cites the governing decision.
     op.execute(
         """
-        INSERT INTO data_sources (name, description, license_url)
-        VALUES
-            (
-                'incidents',
-                'Historical road incidents (crashes, injuries) for the configured city. '
-                'Provider chosen by ADR 0007 (MassDOT IMPACT, tentative pending live evaluation). '
-                'Persisted in the `incidents` table; queryable via `max(incident_at)`.',
-                'https://apps.impact.dot.state.ma.us/'
-            ),
-            (
-                'propagation_algorithm',
-                'C++ Network Risk Propagator algorithm version. Read live from '
-                '`streetsense_propagator.version` + the registered strategy''s '
-                '`version()`. Algorithm chosen by ADR 0006 (Phase 4.8.2).',
-                'https://www.boost.org/doc/libs/1_81_0/libs/graph/doc/index.html'
+        INSERT INTO data_sources (name, last_ingested_at, metadata)
+        VALUES (
+            'incidents',
+            NULL,
+            jsonb_build_object(
+                'kind', 'fetch',
+                'provider', 'massdot-impact',
+                'adr', '0007-incident-dataset',
+                'license', 'public-records',
+                'description',
+                'Historical road incidents (crashes, injuries) for the configured city.'
             )
+        )
+        ON CONFLICT (name) DO NOTHING;
+        """
+    )
+
+    op.execute(
+        """
+        INSERT INTO data_sources (name, last_ingested_at, metadata)
+        VALUES (
+            'propagation_algorithm',
+            now(),
+            jsonb_build_object(
+                'kind', 'compute',
+                'adr', '0006-propagation-algorithm',
+                'library', 'streetsense_propagator',
+                'algorithm', 'draft',
+                'description',
+                'C++ Network Risk Propagator algorithm. Algorithm chosen by ADR 0006 (Phase 4.8.2).'
+            )
+        )
         ON CONFLICT (name) DO NOTHING;
         """
     )

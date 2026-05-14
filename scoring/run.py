@@ -90,16 +90,15 @@ _SUB_SCORE_REGISTRY: Final[dict[str, _SubScoreColumns]] = {
         is_stub_col="is_stub_lane_marking",
         real_since_phase=3,
     ),
-    # Phase 4 entries (placeholders, written as stubs until their scorers ship):
     "junction_complexity": _SubScoreColumns(
         sub_score_col="sub_score_junction_complexity",
         is_stub_col="is_stub_junction_complexity",
-        real_since_phase=0,
+        real_since_phase=4,
     ),
     "historical": _SubScoreColumns(
         sub_score_col="sub_score_historical",
         is_stub_col="is_stub_historical",
-        real_since_phase=0,
+        real_since_phase=4,
     ),
 }
 
@@ -191,6 +190,7 @@ _INSERT_SEGMENT_SCORE_SQL = """
 INSERT INTO segment_scores (
     segment_id,
     composite_risk,
+    propagation_uplift,
     sub_score_lane_marking,
     sub_score_glare,
     sub_score_junction_complexity,
@@ -210,6 +210,7 @@ INSERT INTO segment_scores (
 VALUES (
     %(segment_id)s,
     %(composite_risk)s,
+    %(propagation_uplift)s,
     %(sub_score_lane_marking)s,
     %(sub_score_glare)s,
     %(sub_score_junction_complexity)s,
@@ -417,6 +418,12 @@ class ScoringRun:
             "osm_snapshot_date": self._config.osm_snapshot_date,
             "imagery_capture_window": self._config.imagery_capture_window_daterange,
             "propagation_algorithm_version": self._config.propagation_algorithm_version,
+            # Phase 4 columns: the Phase 2/3 streaming path writes
+            # ``propagation_uplift = 0.0`` (no propagator wired). The
+            # Phase 4 path (scoring.phase4_run) overrides both
+            # ``composite_risk`` and ``propagation_uplift`` after
+            # building this row and before flushing the batch.
+            "propagation_uplift": 0.0,
         }
 
         # Per-sub-score columns + provisional composite/confidence.

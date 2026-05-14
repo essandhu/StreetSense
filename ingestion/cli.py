@@ -38,6 +38,9 @@ import structlog
 from ingestion.config import get_database_url, load_city
 from ingestion.imagery.job import ImageryIngestConfig, ingest_imagery
 from ingestion.imagery.mapillary import MapillaryProvider
+from ingestion.incidents.job import IncidentIngestConfig, ingest_incidents
+from ingestion.incidents.massdot_impact import MassDOTImpactProvider
+from ingestion.incidents.provider import BoundingBox
 from ingestion.osm.osmium_adapter import GeofabrikOSMSource
 from ingestion.persist import persist_road_segments
 
@@ -137,6 +140,53 @@ def cmd_imagery(city: str, *, max_segments: int | None = None) -> int:
     return 0
 
 
+def cmd_incidents(city: str, *, years: tuple[int, ...] | None = None) -> int:
+    """Ingest historical incidents for the configured city (Phase 4)."""
+    _configure_logging()
+    config = load_city(city)
+    database_url = get_database_url()
+
+    log.info("incidents.start", city=config.name)
+
+    min_lon, min_lat, max_lon, max_lat = config.bbox
+    bbox = BoundingBox(
+        min_lat=min_lat,
+        min_lon=min_lon,
+        max_lat=max_lat,
+        max_lon=max_lon,
+    )
+
+    t0 = time.perf_counter()
+    kwargs: dict[str, object] = {}
+    if years is not None:
+        kwargs["years"] = years
+    with MassDOTImpactProvider(**kwargs) as provider:
+        summary = ingest_incidents(
+            database_url=database_url,
+            provider=provider,
+            bbox=bbox,
+            config=IncidentIngestConfig(),
+        )
+    t_total = time.perf_counter() - t0
+
+    log.info(
+        "incidents.done",
+        city=config.name,
+        rows_inserted=summary.rows_inserted,
+        rows_skipped=summary.rows_skipped,
+        rows_seen=summary.rows_seen,
+        earliest=summary.earliest_incident_at.isoformat()
+        if summary.earliest_incident_at
+        else None,
+        latest=summary.latest_incident_at.isoformat()
+        if summary.latest_incident_at
+        else None,
+        severity_counts=summary.severity_counts,
+        total_seconds=round(t_total, 3),
+    )
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="streetsense-ingest")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -156,11 +206,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Cap the number of segments processed (default: unlimited).",
     )
 
+    incidents = sub.add_parser(
+        "incidents",
+        help="Ingest historical road incidents for the configured city (Phase 4).",
+    )
+    incidents.add_argument("--city", required=True, help="City config slug (e.g., cambridge).")
+    incidents.add_argument(
+        "--years",
+        default=None,
+        help=(
+            "Comma-separated list of CrashClosedYear/* MassDOT cohorts to ingest. "
+            "Defaults to the adapter's 5-year window."
+        ),
+    )
+
     args = parser.parse_args(argv)
     if args.cmd == "seed":
         return cmd_seed(args.city)
     if args.cmd == "imagery":
         return cmd_imagery(args.city, max_segments=args.max_segments)
+    if args.cmd == "incidents":
+        years_arg: tuple[int, ...] | None = None
+        if args.years:
+            years_arg = tuple(int(y.strip()) for y in args.years.split(",") if y.strip())
+        return cmd_incidents(args.city, years=years_arg)
     parser.error(f"Unknown command: {args.cmd}")
     return 2
 

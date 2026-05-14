@@ -27,19 +27,25 @@ import argparse
 import json
 import sys
 from collections.abc import Iterable, Sequence
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
 import onnxruntime as ort
 import psycopg
+import streetsense_propagator
 import structlog
 from minio import Minio
 
 from ingestion.config import get_database_url, load_city
 from scoring.environmental.glare import GlareScorer
+from scoring.historical.scorer import HistoricalCorrelationScorer
+from scoring.junction.scorer import JunctionComplexityScorer
 from scoring.perception.scorer import ImageryLoader, PerceptionScorer
-from scoring.run import ScoringRun, ScoringRunConfig, default_24_hourly_samples
+from scoring.phase4_loaders import make_incident_loader, make_topology_loader
+from scoring.phase4_run import execute_phase4_scoring_run
+from scoring.propagator.runner import PHASE_4_DEFAULT_STRATEGY
+from scoring.run import ScoringRunConfig, default_24_hourly_samples
 
 log = structlog.get_logger(__name__)
 
@@ -187,6 +193,16 @@ def _build_imagery_loader(database_url: str, minio: Minio, bucket: str) -> Image
     return _load
 
 
+def _resolve_incident_window(database_url: str) -> tuple[datetime, datetime] | None:
+    """Return ``(min(incident_at), max(incident_at))`` from incidents, or None."""
+    with psycopg.connect(_psycopg_dsn(database_url)) as conn, conn.cursor() as cur:
+        cur.execute("SELECT min(incident_at), max(incident_at) FROM incidents")
+        row = cur.fetchone()
+    if row is None or row[0] is None:
+        return None
+    return (row[0], row[1])
+
+
 def cmd_run(city: str, reference_day: date) -> int:
     _configure_logging()
     config = load_city(city)
@@ -204,27 +220,52 @@ def cmd_run(city: str, reference_day: date) -> int:
     )
     imagery_window = _resolve_imagery_window(database_url)
     samples = default_24_hourly_samples(reference_day)
+    incident_window = _resolve_incident_window(database_url)
 
     minio = _minio_from_env()
     session = _load_model_session(minio, model_bucket, model_object_key)
     imagery_loader = _build_imagery_loader(database_url, minio, DEFAULT_MINIO_BUCKET_IMAGERY)
+
+    # Build the Phase 4 scorer set: glare (Phase 2), perception (Phase 3),
+    # junction-complexity + historical-correlation (both new in Phase 4).
+    # JunctionComplexity + Historical bind to PostGIS through the
+    # phase4_loaders' eager-load helpers so per-segment lookups stay
+    # in-memory.
+    propagation_algorithm_version = f"{PHASE_4_DEFAULT_STRATEGY}-{streetsense_propagator.version}"
+
+    # The historical scorer needs the scoring-run's reference timestamp
+    # for recency weighting. Use the noon UTC of the reference day so
+    # the decay is consistent across all 24 samples.
+    run_at = datetime(reference_day.year, reference_day.month, reference_day.day, 12, tzinfo=UTC)
+
+    with psycopg.connect(_psycopg_dsn(database_url)) as conn:
+        topology_loader = make_topology_loader(conn)
+        incident_loader = make_incident_loader(conn)
+
+    junction_scorer = JunctionComplexityScorer(topology_loader=topology_loader)
+    historical_scorer = HistoricalCorrelationScorer(
+        incident_loader=incident_loader,
+        run_at=run_at,
+    )
 
     run_config = ScoringRunConfig(
         temporal_samples=samples,
         osm_snapshot_date=osm_snapshot_date,
         perception_model_version=perception_model_version,
         imagery_capture_window=imagery_window,
+        propagation_algorithm_version=propagation_algorithm_version,
         notes=f"city={config.name}; reference_day={reference_day.isoformat()}",
     )
-    run = ScoringRun(
+    summary = execute_phase4_scoring_run(
         config=run_config,
         scorers=[
             GlareScorer(),
             PerceptionScorer(session=session, imagery_loader=imagery_loader),
+            junction_scorer,
+            historical_scorer,
         ],
         database_url=database_url,
     )
-    summary = run.execute()
 
     stub_lane_count = _stub_fallback_count(database_url, summary.run_id)
 
@@ -240,6 +281,16 @@ def cmd_run(city: str, reference_day: date) -> int:
             imagery_window[0].isoformat(),
             imagery_window[1].isoformat(),
         ],
+        "incidents_window": [
+            incident_window[0].isoformat(),
+            incident_window[1].isoformat(),
+        ]
+        if incident_window
+        else None,
+        "propagation_algorithm_version": propagation_algorithm_version,
+        "propagation_total_seconds": round(summary.propagation_total_seconds, 3),
+        "propagation_per_hour_seconds": [round(s, 4) for s in summary.propagation_per_hour_seconds],
+        "composite_weights": dict(summary.composite_weights),
         "stub_fallback_lane_marking_rows": stub_lane_count,
     }
     log.info("scoring_cli.summary", **summary_record)
