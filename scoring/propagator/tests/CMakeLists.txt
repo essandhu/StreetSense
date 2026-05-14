@@ -1,23 +1,26 @@
 # scoring/propagator/tests/CMakeLists.txt
 #
-# Phase 4.1.7 placeholder. The first GoogleTest cases land in Phase 4.2.2
-# (StrategyRegistry tests). When those land, this file calls
-# FetchContent_MakeAvailable(googletest) (declared at the project root)
-# and registers each `test_*.cc` with `gtest_discover_tests`.
-#
-# Refs:
-#   - conductor/tracks/phase-4-propagator/plan.md Phase 4.2
-#   - top-level CMakeLists.txt (declares GoogleTest FetchContent at v1.14.0)
+# Phase 4.2+: GoogleTest unit suite for the propagator engine.
+# FetchContent_MakeAvailable(googletest) pulls v1.14.0 (declared at the
+# project root) at first configure time. Subsequent builds reuse the
+# fetched copy.
 
-# Future Phase 4.2 wiring (sketch):
-#   FetchContent_MakeAvailable(googletest)
-#   add_executable(propagator_unit_tests
-#       test_registry.cc
-#       test_graph.cc
-#       test_influence_diffusion.cc
-#   )
-#   target_link_libraries(propagator_unit_tests
-#       PRIVATE propagator_engine GTest::gtest_main
-#   )
-#   include(GoogleTest)
-#   gtest_discover_tests(propagator_unit_tests)
+FetchContent_MakeAvailable(googletest)
+
+add_executable(propagator_unit_tests
+    test_registry.cc
+)
+
+target_link_libraries(propagator_unit_tests
+    PRIVATE
+        propagator_engine
+        GTest::gtest
+        GTest::gtest_main
+)
+
+# GoogleTest's gtest_discover_tests scans the compiled binary for
+# TEST() and TEST_F() registrations and exposes each as a ctest entry.
+include(GoogleTest)
+gtest_discover_tests(propagator_unit_tests
+    DISCOVERY_TIMEOUT 60
+)
