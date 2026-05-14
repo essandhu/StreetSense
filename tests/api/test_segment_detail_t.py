@@ -25,15 +25,11 @@ pytestmark = pytest.mark.integration
 
 
 # 24 hourly samples on the summer solstice — same default as `make scoring-run`.
-TEMPORAL_SAMPLES = tuple(
-    datetime(2025, 6, 21, h, 0, tzinfo=UTC) for h in range(24)
-)
+TEMPORAL_SAMPLES = tuple(datetime(2025, 6, 21, h, 0, tzinfo=UTC) for h in range(24))
 
 
 @pytest.fixture
-def seeded_run(
-    owner_conn: psycopg.Connection[Any], database_url: str
-) -> UUID:
+def seeded_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
     """Seed one east-west segment, run scoring for 24 hourly samples, return seg id."""
     geom = LineString([(-71.110, 42.370), (-71.090, 42.370)])
     with owner_conn.cursor() as cur:
@@ -109,9 +105,7 @@ class TestSegmentDetailWithT:
         )
 
     @pytest.mark.asyncio
-    async def test_confidence_is_present(
-        self, api_client: AsyncClient, seeded_run: UUID
-    ) -> None:
+    async def test_confidence_is_present(self, api_client: AsyncClient, seeded_run: UUID) -> None:
         resp = await api_client.get(
             f"/segments/{seeded_run}",
             params={"t": "2025-06-21T12:00:00Z"},

@@ -53,9 +53,7 @@ def _lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:
 
 
 @pytest.fixture
-def seeded_run(
-    owner_conn: psycopg.Connection[Any], database_url: str
-) -> UUID:
+def seeded_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
     geom = LineString([(-71.110, 42.370), (-71.100, 42.370)])  # east-west, inside Cambridge
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
@@ -174,9 +172,7 @@ class TestPgTileservHttpEndpoint:
         except (httpx.HTTPError, OSError):
             return False
 
-    def test_endpoint_with_t_returns_200_and_non_empty_body(
-        self, seeded_run: UUID
-    ) -> None:
+    def test_endpoint_with_t_returns_200_and_non_empty_body(self, seeded_run: UUID) -> None:
         if not self._is_reachable():
             pytest.skip("pg_tileserv not reachable at " + self.BASE_URL)
         x, y = _lonlat_to_tile(-71.105, 42.370, 14)

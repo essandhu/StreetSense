@@ -80,7 +80,7 @@ WHERE rs.id = %(id)s
 @router.get("/{segment_id}", response_model=SegmentDetail)
 async def get_segment(
     segment_id: UUID,
-    t: datetime | None = Query(
+    t: datetime | None = Query(  # noqa: B008 - FastAPI's Query() as default is the idiomatic pattern
         default=None,
         description=(
             "Optional ISO-8601 UTC instant. Snaps to the nearest persisted "
@@ -188,9 +188,7 @@ async def get_segment(
     )
 
 
-async def _compute_glare_metadata(
-    segment_id: UUID, at: datetime
-) -> dict[str, Any]:
+async def _compute_glare_metadata(segment_id: UUID, at: datetime) -> dict[str, Any]:
     """Compute the glare metadata (sun_azimuth_deg, sun_elevation_deg) for
     the segment's representative point at ``at``.
 

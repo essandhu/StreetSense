@@ -26,7 +26,7 @@ import uuid
 from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
-from typing import Final
+from typing import Any, Final
 from uuid import UUID
 
 import psycopg
@@ -271,8 +271,16 @@ class ScoringRun:
             batch: list[dict[str, object]] = []
             for segment in load_scoring_segments(conn):
                 segments_processed += 1
-                for sample in self._config.temporal_samples:
-                    batch.append(self._build_row(segment, sample, run_id))
+                # Batched scorer fan-out per segment: ask each scorer for
+                # all temporal_samples at once when it offers
+                # `score_for_samples`, else fall back to per-call score.
+                results_by_scorer = self._score_segment_for_all_samples(segment)
+                for i, sample in enumerate(self._config.temporal_samples):
+                    batch.append(
+                        self._build_row_from_results(
+                            segment, sample, run_id, {n: r[i] for n, r in results_by_scorer.items()}
+                        )
+                    )
                     if len(batch) >= batch_size:
                         rows_written += _flush(conn, batch)
                         batch = []
@@ -296,13 +304,29 @@ class ScoringRun:
             seconds_elapsed=elapsed,
         )
 
-    def _build_row(
+    def _score_segment_for_all_samples(self, segment: ScoringSegment) -> dict[str, list[Any]]:
+        """Return ``{scorer_name: [result_for_t0, ..., result_for_tN]}``.
+
+        Uses each scorer's batched ``score_for_samples`` when present;
+        else loops over ``score`` per timestamp.
+        """
+        out: dict[str, list[Any]] = {}
+        ats = list(self._config.temporal_samples)
+        for name, scorer in self._scorers.items():
+            batch_fn = getattr(scorer, "score_for_samples", None)
+            if callable(batch_fn):
+                out[name] = list(batch_fn(segment, ats=ats))
+            else:
+                out[name] = [scorer.score(segment, at=t) for t in ats]
+        return out
+
+    def _build_row_from_results(
         self,
         segment: ScoringSegment,
         sample: datetime,
         run_id: UUID,
+        results: dict[str, Any],
     ) -> dict[str, object]:
-        results = {name: scorer.score(segment, at=sample) for name, scorer in self._scorers.items()}
 
         glare = results.get("glare")
         if glare is None:
