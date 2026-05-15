@@ -65,18 +65,28 @@ prop::GraphData MakeGraph(std::size_t n_nodes, std::size_t n_edges) {
 // One-shot harness: each iteration runs `propagate()` once on the
 // pre-built graph. The graph build cost stays outside the timed loop
 // via `state.SetItemsProcessed` (we report propagation work only).
-void BM_InfluenceDiffusion(benchmark::State& state) {
+//
+// Algorithm: `pagerank-diffusion` is the production algorithm chosen
+// by ADR 0006. The other two registered strategies stay benchmarkable
+// via the registry but are not on the >10% perf gate.
+void BM_PagerankDiffusion(benchmark::State& state) {
     const auto n_nodes = static_cast<std::size_t>(state.range(0));
     const auto n_edges = static_cast<std::size_t>(state.range(1));
     auto graph = MakeGraph(n_nodes, n_edges);
     prop::Params params;
+    // ADR 0006 §"Parameter Defaults" — k_hop_radius is ignored by
+    // pagerank-diffusion but the field is preserved for cross-strategy
+    // Params uniformity; decay_weight is the canonical PageRank damping
+    // factor; normalize=true rescales uplift onto the same magnitude
+    // as the per-segment local aggregate for downstream composite
+    // assembly.
     params.k_hop_radius = 2;
-    params.decay_weight = 0.5;
-    params.normalize = false;
+    params.decay_weight = 0.85;
+    params.normalize = true;
 
-    auto strategy = prop::StrategyRegistry::instance().lookup("influence-diffusion");
+    auto strategy = prop::StrategyRegistry::instance().lookup("pagerank-diffusion");
     if (strategy == nullptr) {
-        state.SkipWithError("influence-diffusion strategy not registered");
+        state.SkipWithError("pagerank-diffusion strategy not registered");
         return;
     }
 
@@ -90,7 +100,7 @@ void BM_InfluenceDiffusion(benchmark::State& state) {
 
 // Register the three size classes documented in the file header.
 // Argument pairs: {node_count, edge_count}.
-BENCHMARK(BM_InfluenceDiffusion)
+BENCHMARK(BM_PagerankDiffusion)
     ->Args({1'000, 1'000})
     ->Args({10'000, 50'000})
     ->Args({100'000, 500'000})
