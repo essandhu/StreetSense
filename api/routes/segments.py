@@ -47,7 +47,7 @@ _PHASE_2_PROPAGATION_SENTINEL = "none-phase-2"
 def _parse_propagation_version(version: str | None) -> PropagationAlgorithmInfo | None:
     """Split a persisted ``<name>-<semver>`` string into the typed pair.
 
-    Phase 4 writes e.g. ``"influence-diffusion-0.1.0"``; the
+    Phase 4 writes e.g. ``"pagerank-diffusion-0.1.0"``; the
     ``rsplit("-", 1)`` gives the algorithm name and the semver. Returns
     ``None`` for empty values or the pre-Phase-4 sentinel.
     """

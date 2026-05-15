@@ -70,7 +70,7 @@ def _seed_phase4_row(
     *,
     composite: float,
     uplift: float,
-    algorithm: str = "influence-diffusion-0.1.0",
+    algorithm: str = "pagerank-diffusion-0.1.0",
 ) -> None:
     """Insert one scoring_runs + segment_scores row using the Phase 4 columns."""
     with owner_conn.cursor() as cur:
@@ -135,7 +135,7 @@ def test_segment_detail_carries_phase4_fields(
         body["composite_risk"], abs=1e-6
     )
     algo = body["propagation_algorithm"]
-    assert algo == {"name": "influence-diffusion", "version": "0.1.0"}
+    assert algo == {"name": "pagerank-diffusion", "version": "0.1.0"}
 
 
 def test_segment_detail_sentinel_propagation_algorithm_is_none(
@@ -187,7 +187,7 @@ def test_t_query_param_resolves_phase4_row(
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["propagation_algorithm"] == {
-        "name": "influence-diffusion",
+        "name": "pagerank-diffusion",
         "version": "0.1.0",
     }
     assert body["propagation_uplift"] == pytest.approx(0.20, abs=1e-6)

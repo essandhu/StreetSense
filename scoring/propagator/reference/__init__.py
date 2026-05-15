@@ -11,7 +11,7 @@ Phase 4.1: empty package scaffold; real content lands in Phase 4.3 — see
 
 from __future__ import annotations
 
-from . import influence_diffusion
+from . import influence_diffusion, pagerank_diffusion, weighted_shortest_path
 from .types import Edge, GraphData, NodeId, Params, UpliftMap, is_valid
 
 __all__ = [
@@ -22,4 +22,6 @@ __all__ = [
     "UpliftMap",
     "influence_diffusion",
     "is_valid",
+    "pagerank_diffusion",
+    "weighted_shortest_path",
 ]

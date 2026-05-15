@@ -10,7 +10,9 @@ FetchContent_MakeAvailable(googletest)
 add_executable(propagator_unit_tests
     test_graph.cc
     test_influence_diffusion.cc
+    test_pagerank_diffusion.cc
     test_registry.cc
+    test_weighted_shortest_path.cc
 )
 
 target_link_libraries(propagator_unit_tests

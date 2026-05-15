@@ -118,7 +118,7 @@ class PropagationAlgorithmInfo(BaseModel):
     name: str = Field(
         ...,
         description=(
-            'Stable algorithm identifier (e.g., ``"influence-diffusion"``). '
+            'Stable algorithm identifier (e.g., ``"pagerank-diffusion"``). '
             "Empty when the row predates Phase 4 (sentinel branch)."
         ),
     )

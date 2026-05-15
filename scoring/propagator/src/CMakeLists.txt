@@ -31,7 +31,9 @@ FetchContent_MakeAvailable(spdlog)
 add_library(propagator_engine STATIC
     graph.cc
     influence_diffusion.cc
+    pagerank_diffusion.cc
     registry.cc
+    weighted_shortest_path.cc
 )
 
 target_include_directories(propagator_engine

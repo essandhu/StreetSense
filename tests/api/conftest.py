@@ -86,7 +86,7 @@ def seed_data_sources(owner_conn: psycopg.Connection[Any]) -> None:
                 ('incidents',        now() - interval '2 minutes',
                  '{"kind": "fetch", "provider": "massdot-impact", "adr": "0007-incident-dataset", "license": "public-records"}'::jsonb),
                 ('propagation_algorithm', now() - interval '30 seconds',
-                 '{"kind": "compute", "library": "streetsense_propagator", "adr": "0006-propagation-algorithm", "algorithm": "influence-diffusion"}'::jsonb)
+                 '{"kind": "compute", "library": "streetsense_propagator", "adr": "0006-propagation-algorithm", "algorithm": "pagerank-diffusion"}'::jsonb)
             """
         )
     owner_conn.commit()

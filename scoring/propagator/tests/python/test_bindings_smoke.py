@@ -16,8 +16,13 @@ def test_module_exposes_version() -> None:
 
 
 def test_module_exposes_registered_strategies() -> None:
-    """strategies attribute lists influence-diffusion (the only Phase 4 strategy)."""
-    assert "influence-diffusion" in streetsense_propagator.strategies
+    """strategies attribute lists all three ADR 0006 algorithm candidates."""
+    registered = set(streetsense_propagator.strategies)
+    assert {
+        "influence-diffusion",
+        "weighted-shortest-path",
+        "pagerank-diffusion",
+    }.issubset(registered)
 
 
 def test_propagate_returns_dict_on_trivial_graph() -> None:

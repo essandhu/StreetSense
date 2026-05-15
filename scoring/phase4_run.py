@@ -307,7 +307,14 @@ def execute_phase4_scoring_run(
     per_hour_wall: tuple[float, ...] = ()
 
     if propagation_params is None:
-        propagation_params = {"k_hop_radius": 2, "decay_weight": 0.5, "normalize": False}
+        # Defaults match ADR 0006's Decision for `pagerank-diffusion`
+        # (the chosen production strategy):
+        #   - decay_weight = 0.85 (standard PageRank damping)
+        #   - normalize    = True (per-graph max-rescale so uplift composes with
+        #                    local aggregate on a comparable scale)
+        #   - k_hop_radius is ignored by `pagerank-diffusion` but kept on the
+        #     shared Params struct.
+        propagation_params = {"k_hop_radius": 2, "decay_weight": 0.85, "normalize": True}
 
     with psycopg.connect(dsn) as conn:
         # Record the scoring_runs row up-front so any later error still

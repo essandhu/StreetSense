@@ -126,7 +126,7 @@ def _build_run_config() -> ScoringRunConfig:
         osm_snapshot_date=FIXTURE_METADATA.osm_snapshot_date,
         perception_model_version="phase4-test-no-perception",
         imagery_capture_window=(date(2025, 1, 1), date(2025, 12, 31)),
-        propagation_algorithm_version="influence-diffusion-0.1.0",
+        propagation_algorithm_version="pagerank-diffusion-0.1.0",
         notes="phase4 integration test",
     )
 
@@ -184,7 +184,7 @@ class TestPhase4ScoringRun:
         with owner_conn.cursor() as cur:
             cur.execute("SELECT DISTINCT propagation_algorithm_version FROM segment_scores")
             rows = cur.fetchall()
-        assert rows == [("influence-diffusion-0.1.0",)]
+        assert rows == [("pagerank-diffusion-0.1.0",)]
 
     def test_composite_risk_and_uplift_populated(
         self,

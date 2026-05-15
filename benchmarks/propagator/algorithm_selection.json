@@ -1,0 +1,57 @@
+{
+  "nodes": 5000,
+  "edges": 25000,
+  "seed": 42,
+  "hours": 24,
+  "active_fraction": 0.1,
+  "wall_clock_budget_seconds": 5.0,
+  "correlation_floor": 0.1,
+  "is_synthetic": true,
+  "synthetic_methodology": "Random directed graph (deterministic seed). Per-hour inputs are sparse (~10% active nodes). Planted incident density is a weighted mix of local input sum (50%), 1-hop neighborhood mean (30%), and degree centrality (20%) + small Gaussian noise. This stands in for the live Cambridge run + MassDOT incident correlation, which is deferred to a separate workstream.",
+  "algorithms": [
+    {
+      "name": "influence-diffusion",
+      "correlation": 0.17304095266802696,
+      "mean_per_call_wall_seconds": 0.04087270416675892,
+      "p99_per_call_wall_seconds": 0.06190490000153659,
+      "total_wall_seconds": 0.9921578000012232,
+      "params": {
+        "k_hop_radius": 2,
+        "decay_weight": 0.5,
+        "normalize": false
+      },
+      "meets_wall_clock_budget": true,
+      "meets_correlation_floor": true
+    },
+    {
+      "name": "weighted-shortest-path",
+      "correlation": 0.11032799449729822,
+      "mean_per_call_wall_seconds": 0.44614966666669414,
+      "p99_per_call_wall_seconds": 0.5047548999991704,
+      "total_wall_seconds": 10.718139700000393,
+      "params": {
+        "k_hop_radius": 2,
+        "decay_weight": 0.5,
+        "normalize": false
+      },
+      "meets_wall_clock_budget": true,
+      "meets_correlation_floor": true
+    },
+    {
+      "name": "pagerank-diffusion",
+      "correlation": 0.2940313403842969,
+      "mean_per_call_wall_seconds": 0.009382775000024898,
+      "p99_per_call_wall_seconds": 0.013680699999895296,
+      "total_wall_seconds": 0.23719619999974384,
+      "params": {
+        "k_hop_radius": 2,
+        "decay_weight": 0.85,
+        "normalize": false
+      },
+      "meets_wall_clock_budget": true,
+      "meets_correlation_floor": true
+    }
+  ],
+  "winner": "pagerank-diffusion",
+  "winner_rationale": "pagerank-diffusion has the highest correlation (0.2940) of all eligible algorithms; meets the < 5.0 s wall-clock budget (p99 = 0.0137s) and the >0.1 correlation floor."
+}

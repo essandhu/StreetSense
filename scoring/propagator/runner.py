@@ -40,7 +40,13 @@ DEFAULT_WORKERS: Final[int] = 4
 # Phase 4 ships one production algorithm (chosen by ADR 0006). The
 # runner accepts a strategy_id at call time so future algorithms slot
 # in without changing this module.
-PHASE_4_DEFAULT_STRATEGY: Final[str] = "influence-diffusion"
+#
+# The ADR's in-track benchmark picked ``pagerank-diffusion`` as the
+# production strategy on highest correlation + lowest wall-clock; the
+# other two registered candidates (``influence-diffusion``,
+# ``weighted-shortest-path``) remain registered for posterity and as
+# comparison baselines on the next benchmark run.
+PHASE_4_DEFAULT_STRATEGY: Final[str] = "pagerank-diffusion"
 
 
 @dataclass(frozen=True, slots=True)
