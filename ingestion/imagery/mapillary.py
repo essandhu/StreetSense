@@ -176,7 +176,12 @@ class MapillaryProvider:
                 segment_id=waypoint.segment_id,
                 sample_index=waypoint.sample_index,
                 capture_date=capture_date,
-                heading_deg=float(raw.get("compass_angle") or 0.0),
+                # Mapillary's `compass_angle` is documented as [0, 360)
+                # but occasionally returns values like -0.30392932891846
+                # (float precision near 0°) or, defensively, multiples
+                # ≥ 360. Normalize to the unit circle so the DB's
+                # segment_imagery_heading_range CHECK constraint holds.
+                heading_deg=float(raw.get("compass_angle") or 0.0) % 360.0,
                 camera_params={
                     k: raw[k]
                     for k in ("camera_parameters", "thumb_1024_url")

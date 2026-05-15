@@ -23,8 +23,10 @@ import os
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
+from unittest.mock import MagicMock
 from uuid import UUID
 
+import httpx
 import pytest
 import vcr
 
@@ -182,3 +184,62 @@ def test_cassette_has_no_unscrubbed_token(cassette_name: str) -> None:
     if not cassette_path.exists():
         pytest.skip(f"Cassette {cassette_name} not yet recorded")
     _verify_cassette_token_scrubbed(cassette_path)
+
+
+# --- Regression: compass_angle normalization -------------------------------
+# Mapillary's `compass_angle` field is documented as [0, 360) but real
+# responses occasionally return values like -0.30392932891846 (likely
+# floating-point precision near 0°). The DB schema's
+# `segment_imagery_heading_range` CHECK constraint
+# (db/migrations/versions/0008_segment_imagery.py) requires
+# `heading_deg >= 0.0 AND heading_deg < 360.0`, so the adapter must
+# normalize at the ingress boundary or the entire ingestion job rolls
+# back at flush time.
+def _mock_client_with_payload(payload: dict[str, object]) -> httpx.Client:
+    fake_response = MagicMock(spec=httpx.Response)
+    fake_response.raise_for_status = MagicMock(return_value=None)
+    fake_response.json = MagicMock(return_value=payload)
+    fake_client = MagicMock(spec=httpx.Client)
+    fake_client.get = MagicMock(return_value=fake_response)
+    return fake_client
+
+
+@pytest.mark.parametrize(
+    ("raw_compass_angle", "expected_heading_deg"),
+    [
+        (-0.30392932891846, 360.0 - 0.30392932891846),  # the live-pipeline failure
+        (-0.0, 0.0),
+        (0.0, 0.0),
+        (180.0, 180.0),
+        (359.999, 359.999),
+        (360.0, 0.0),  # closed-open interval — 360 wraps to 0
+        (720.5, 0.5),  # defensive: any multiple wraps
+        (None, 0.0),  # Mapillary occasionally omits the field
+    ],
+)
+def test_heading_deg_is_normalized_to_unit_circle(
+    raw_compass_angle: float | None, expected_heading_deg: float
+) -> None:
+    """``heading_deg`` must satisfy the schema's [0, 360) constraint
+    regardless of what Mapillary returns."""
+    payload: dict[str, object] = {
+        "data": [
+            {
+                "id": "test-image-1",
+                "captured_at": 1_700_000_000_000,  # ms since epoch (2023-11-14)
+                "compass_angle": raw_compass_angle,
+                "camera_parameters": [1.0, 0.0, 0.0],
+                "thumb_1024_url": "https://example.invalid/thumb.jpg",
+            }
+        ]
+    }
+    fake_client = _mock_client_with_payload(payload)
+    with MapillaryProvider(access_token="MLY|TEST|TEST", client=fake_client) as provider:
+        references = list(provider.fetch_for_waypoints([_waypoint()]))
+
+    assert len(references) == 1
+    heading = references[0].heading_deg
+    assert 0.0 <= heading < 360.0, (
+        f"heading_deg must be in [0, 360); got {heading} from compass_angle={raw_compass_angle}"
+    )
+    assert heading == pytest.approx(expected_heading_deg)
