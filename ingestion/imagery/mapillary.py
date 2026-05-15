@@ -25,8 +25,11 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import httpx
+import structlog
 
 from ingestion.imagery.provider import ImageryReference, Waypoint
+
+log = structlog.get_logger(__name__)
 
 # A small bbox (~10 m at Cambridge latitude) centered on each waypoint.
 # The Mapillary `images` endpoint takes a `bbox`, not a point — this is
@@ -112,6 +115,8 @@ class MapillaryProvider:
         access_token: str | None = None,
         client: httpx.Client | None = None,
         rate_limit_per_minute: int = 60_000,
+        retry_max_attempts: int = 5,
+        retry_initial_backoff_seconds: float = 1.0,
     ) -> None:
         token = access_token or os.environ.get("MAPILLARY_ACCESS_TOKEN")
         if not token:
@@ -125,6 +130,8 @@ class MapillaryProvider:
         self._client = client or httpx.Client(http2=True, timeout=30.0)
         self._owns_client = client is None
         self._rate_limiter = _TokenBucket(rate_limit_per_minute)
+        self._retry_max_attempts = retry_max_attempts
+        self._retry_initial_backoff_seconds = retry_initial_backoff_seconds
 
     def __enter__(self) -> MapillaryProvider:
         return self
@@ -142,14 +149,51 @@ class MapillaryProvider:
         for waypoint in waypoints:
             yield from self._fetch_one_waypoint(waypoint, within=within)
 
+    def _get_with_retry(
+        self,
+        url: str,
+        params: dict[str, Any] | None = None,
+        *,
+        follow_redirects: bool = False,
+    ) -> httpx.Response:
+        """``GET`` with exponential-backoff retry on 5xx.
+
+        Mapillary occasionally returns 5xx on transient errors. Over a
+        full Cambridge ingest (~180k API calls) at least one such error
+        is statistically expected; without retry, a single 5xx
+        rolls back the entire ingestion. 4xx responses surface
+        immediately — they are client errors and a retry will not help.
+        """
+        backoff = self._retry_initial_backoff_seconds
+        for attempt in range(self._retry_max_attempts):
+            self._rate_limiter.acquire()
+            response = self._client.get(url, params=params, follow_redirects=follow_redirects)
+            if response.status_code < 500:
+                response.raise_for_status()
+                return response
+            if attempt == self._retry_max_attempts - 1:
+                response.raise_for_status()
+                return response  # pragma: no cover — raise_for_status raised
+            log.warning(
+                "mapillary.5xx_retry",
+                status=response.status_code,
+                attempt=attempt + 1,
+                max_attempts=self._retry_max_attempts,
+                backoff_seconds=backoff,
+                url=url,
+            )
+            time.sleep(backoff)
+            backoff *= 2
+        # Unreachable: the final iteration either returns or raises.
+        raise RuntimeError("unreachable")  # pragma: no cover
+
     def _fetch_one_waypoint(
         self,
         waypoint: Waypoint,
         *,
         within: tuple[date, date] | None,
     ) -> Iterator[ImageryReference]:
-        self._rate_limiter.acquire()
-        response = self._client.get(
+        response = self._get_with_retry(
             f"{_GRAPH_API_BASE}/images",
             params={
                 "access_token": self._token,
@@ -158,7 +202,6 @@ class MapillaryProvider:
                 "limit": 10,
             },
         )
-        response.raise_for_status()
         payload: dict[str, Any] = response.json()
         for raw in payload.get("data", []):
             captured_at = raw.get("captured_at")
@@ -194,22 +237,18 @@ class MapillaryProvider:
         if not isinstance(thumb_url, str):
             # Re-fetch with a fresh thumb URL — Mapillary signs them
             # with a short TTL.
-            self._rate_limiter.acquire()
-            response = self._client.get(
+            response = self._get_with_retry(
                 f"{_GRAPH_API_BASE}/{reference.provider_image_id}",
                 params={
                     "access_token": self._token,
                     "fields": "thumb_1024_url",
                 },
             )
-            response.raise_for_status()
             payload = response.json()
             thumb_url = payload.get("thumb_1024_url")
             if not isinstance(thumb_url, str):
                 raise RuntimeError(
                     f"Mapillary image {reference.provider_image_id} returned no thumb URL"
                 )
-        self._rate_limiter.acquire()
-        image_response = self._client.get(thumb_url, follow_redirects=True)
-        image_response.raise_for_status()
+        image_response = self._get_with_retry(thumb_url, follow_redirects=True)
         return image_response.content

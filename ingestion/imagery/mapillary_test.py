@@ -196,12 +196,86 @@ def test_cassette_has_no_unscrubbed_token(cassette_name: str) -> None:
 # normalize at the ingress boundary or the entire ingestion job rolls
 # back at flush time.
 def _mock_client_with_payload(payload: dict[str, object]) -> httpx.Client:
-    fake_response = MagicMock(spec=httpx.Response)
-    fake_response.raise_for_status = MagicMock(return_value=None)
-    fake_response.json = MagicMock(return_value=payload)
     fake_client = MagicMock(spec=httpx.Client)
-    fake_client.get = MagicMock(return_value=fake_response)
+    fake_client.get = MagicMock(return_value=_mock_response(200, payload))
     return fake_client
+
+
+# --- Regression: 5xx retry --------------------------------------------------
+# Mapillary occasionally returns 5xx on transient errors. Over a full
+# Cambridge ingest (~180k API calls) at least one such error is
+# statistically expected; without retry, that single error rolls back
+# the entire ingestion. See ``_get_with_retry`` in mapillary.py.
+def _mock_response(status_code: int, payload: dict[str, object] | None) -> MagicMock:
+    response = MagicMock(spec=httpx.Response)
+    response.status_code = status_code
+    if status_code >= 400:
+        response.raise_for_status = MagicMock(
+            side_effect=httpx.HTTPStatusError(
+                f"{status_code}", request=MagicMock(), response=response
+            )
+        )
+    else:
+        response.raise_for_status = MagicMock(return_value=None)
+    response.json = MagicMock(return_value=payload or {"data": []})
+    return response
+
+
+def _ok_payload() -> dict[str, object]:
+    return {
+        "data": [
+            {
+                "id": "img-1",
+                "captured_at": 1_700_000_000_000,
+                "compass_angle": 12.5,
+                "camera_parameters": [],
+                "thumb_1024_url": "https://example.invalid/x.jpg",
+            }
+        ]
+    }
+
+
+def _provider_with_responses(responses: list[MagicMock]) -> MapillaryProvider:
+    """Provider whose mocked client yields ``responses`` in order on .get()."""
+    fake_client = MagicMock(spec=httpx.Client)
+    fake_client.get = MagicMock(side_effect=responses)
+    return MapillaryProvider(
+        access_token="MLY|TEST|TEST",
+        client=fake_client,
+        retry_initial_backoff_seconds=0.0,
+        retry_max_attempts=3,
+    )
+
+
+def test_get_with_retry_succeeds_after_one_5xx() -> None:
+    """A single 5xx is retried and the subsequent 200 returns normally."""
+    with _provider_with_responses(
+        [_mock_response(500, None), _mock_response(200, _ok_payload())]
+    ) as provider:
+        refs = list(provider.fetch_for_waypoints([_waypoint()]))
+    assert len(refs) == 1
+    assert refs[0].provider_image_id == "img-1"
+
+
+def test_get_with_retry_raises_after_max_attempts() -> None:
+    """Sustained 5xx exhausts retries and raises the final HTTPStatusError."""
+    with (
+        _provider_with_responses([_mock_response(500, None) for _ in range(3)]) as provider,
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        list(provider.fetch_for_waypoints([_waypoint()]))
+
+
+def test_get_with_retry_4xx_raises_immediately() -> None:
+    """4xx is a client error — surface immediately, no retry."""
+    only_call = _mock_response(404, None)
+    with (
+        _provider_with_responses([only_call]) as provider,
+        pytest.raises(httpx.HTTPStatusError),
+    ):
+        list(provider.fetch_for_waypoints([_waypoint()]))
+    # raise_for_status was called once on the single response; no retry happened.
+    only_call.raise_for_status.assert_called_once()
 
 
 @pytest.mark.parametrize(

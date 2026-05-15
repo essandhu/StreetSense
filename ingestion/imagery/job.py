@@ -275,6 +275,11 @@ def ingest_imagery(
                 return 0
             with conn.cursor() as inner:
                 inner.executemany(_INSERT_REF_SQL, batch)
+            # Commit per batch so a mid-stream failure (provider 5xx,
+            # constraint violation, network blip) doesn't roll back the
+            # full Cambridge run. ADR 0005's "rate-limited and resumable"
+            # promise depends on flushed batches being durable.
+            conn.commit()
             count = len(batch)
             batch = []
             return count

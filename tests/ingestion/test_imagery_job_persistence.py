@@ -255,3 +255,105 @@ def test_data_sources_freshness_bumped(
         row = cur.fetchone()
     assert row is not None
     assert row[0] is not None, "imagery.last_ingested_at must be bumped by the job"
+
+
+# --- Regression: per-batch commit -----------------------------------------
+# A long-running ingest must persist flushed batches even if a later
+# batch raises. The single end-of-job commit pattern lost ~5k uploads
+# across two failed Cambridge attempts before this was fixed; see the
+# `_flush()` comment in job.py for the failure mode.
+class _FailAfterNRefsProvider:
+    """Yield the first N references, then raise on the (N+1)th step.
+
+    Used to simulate a transient provider failure mid-stream so the
+    test can assert that the already-flushed batches survived.
+    """
+
+    name = "mapillary"
+
+    def __init__(
+        self,
+        references: list[ImageryReference],
+        bytes_by_id: dict[str, bytes],
+        fail_after_n: int,
+    ) -> None:
+        self._references = references
+        self._bytes_by_id = bytes_by_id
+        self._fail_after_n = fail_after_n
+
+    def fetch_for_waypoints(
+        self,
+        waypoints: list[Waypoint],
+        *,
+        within: tuple[date, date] | None = None,
+    ) -> Iterator[ImageryReference]:
+        del waypoints, within
+        for idx, ref in enumerate(self._references):
+            if idx >= self._fail_after_n:
+                raise RuntimeError("simulated mid-stream provider failure")
+            yield ref
+
+    def download_bytes(self, reference: ImageryReference) -> bytes:
+        return self._bytes_by_id[reference.provider_image_id]
+
+
+def _synthetic_refs(segment_id: UUID, n: int) -> tuple[list[ImageryReference], dict[str, bytes]]:
+    refs = [
+        ImageryReference(
+            provider="mapillary",
+            provider_image_id=f"synthetic-{i}",
+            segment_id=segment_id,
+            sample_index=i,
+            capture_date=date(2025, 1, 1),
+            heading_deg=float(i * 30 % 360),
+            camera_params={},
+        )
+        for i in range(n)
+    ]
+    bytes_by_id = {
+        ref.provider_image_id: f"fake-image-bytes-{i}".encode() for i, ref in enumerate(refs)
+    }
+    return refs, bytes_by_id
+
+
+def test_flushed_batches_persist_when_run_fails_midstream(
+    owner_conn: psycopg.Connection[Any],
+    database_url: str,
+    seeded_segment: UUID,
+    fresh_bucket: str,
+) -> None:
+    """A failure after the first batch flushes must leave the first
+    batch's rows durable in segment_imagery — proving per-batch commit."""
+    refs, bytes_by_id = _synthetic_refs(seeded_segment, n=3)
+    provider = _FailAfterNRefsProvider(refs, bytes_by_id, fail_after_n=2)
+
+    with pytest.raises(RuntimeError, match="simulated mid-stream provider failure"):
+        ingest_imagery(
+            database_url=database_url,
+            provider=provider,
+            object_store=_MinIOClient(),
+            config=ImageryIngestConfig(bucket=fresh_bucket, insert_batch_size=2),
+        )
+
+    # The first batch (2 refs) flushed and must be visible from a
+    # separate connection. The 3rd ref triggered the failure before
+    # the batch filled, so only 2 rows persist.
+    with owner_conn.cursor() as cur:
+        cur.execute(
+            "SELECT provider_image_id FROM segment_imagery WHERE segment_id = %s ORDER BY sample_index",
+            (seeded_segment,),
+        )
+        rows = [r[0] for r in cur.fetchall()]
+    assert rows == ["synthetic-0", "synthetic-1"], (
+        f"Expected the first batch to survive the mid-stream failure; got {rows}"
+    )
+
+    # data_sources.imagery.last_ingested_at must NOT be bumped — the
+    # whole run failed, even though some batches were durable.
+    with owner_conn.cursor() as cur:
+        cur.execute("SELECT last_ingested_at FROM data_sources WHERE name = 'imagery'")
+        row = cur.fetchone()
+    assert row is not None
+    assert row[0] is None, (
+        "imagery freshness must reflect a full successful run, not a partial commit"
+    )
