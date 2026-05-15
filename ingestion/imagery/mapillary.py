@@ -156,18 +156,35 @@ class MapillaryProvider:
         *,
         follow_redirects: bool = False,
     ) -> httpx.Response:
-        """``GET`` with exponential-backoff retry on 5xx.
+        """``GET`` with exponential-backoff retry on 5xx and transport errors.
 
-        Mapillary occasionally returns 5xx on transient errors. Over a
-        full Cambridge ingest (~180k API calls) at least one such error
-        is statistically expected; without retry, a single 5xx
-        rolls back the entire ingestion. 4xx responses surface
-        immediately — they are client errors and a retry will not help.
+        Mapillary occasionally returns 5xx on transient errors, and the
+        HTTP/2 gateway has been observed to terminate streams mid-flight
+        (``httpx.RemoteProtocolError``) over a long ingest. Over a full
+        Cambridge ingest (~180k API calls) at least one of each is
+        statistically expected; without retry, a single failure rolls
+        back the entire ingestion. 4xx responses surface immediately —
+        they are client errors and a retry will not help.
         """
         backoff = self._retry_initial_backoff_seconds
         for attempt in range(self._retry_max_attempts):
             self._rate_limiter.acquire()
-            response = self._client.get(url, params=params, follow_redirects=follow_redirects)
+            try:
+                response = self._client.get(url, params=params, follow_redirects=follow_redirects)
+            except httpx.TransportError as exc:
+                if attempt == self._retry_max_attempts - 1:
+                    raise
+                log.warning(
+                    "mapillary.transport_error_retry",
+                    exc_type=type(exc).__name__,
+                    attempt=attempt + 1,
+                    max_attempts=self._retry_max_attempts,
+                    backoff_seconds=backoff,
+                    url=url,
+                )
+                time.sleep(backoff)
+                backoff *= 2
+                continue
             if response.status_code < 500:
                 response.raise_for_status()
                 return response

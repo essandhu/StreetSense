@@ -278,6 +278,76 @@ def test_get_with_retry_4xx_raises_immediately() -> None:
     only_call.raise_for_status.assert_called_once()
 
 
+# --- Regression: transport-level retry --------------------------------------
+# HTTP/2 connection terminations (RemoteProtocolError) and other transport
+# faults (ConnectError, ReadError, TimeoutException) are raised before any
+# status code is available, so the 5xx retry path above does not catch them.
+# The Cambridge ingest tripped on a RemoteProtocolError mid-stream at
+# stream 2227; the retry loop now wraps the .get() call as well.
+def _transport_error_instance(exc_type: type[httpx.TransportError]) -> httpx.TransportError:
+    # httpx transport-error constructors all accept a message; specific
+    # subclasses occasionally require additional context, so guard with
+    # a default fallback path.
+    try:
+        return exc_type("simulated transient transport failure")
+    except TypeError:  # pragma: no cover — defensive for future httpx changes
+        return exc_type()  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    "exc_type",
+    [
+        httpx.RemoteProtocolError,
+        httpx.ConnectError,
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.ConnectTimeout,
+        httpx.ReadTimeout,
+    ],
+)
+def test_get_with_retry_succeeds_after_one_transport_error(
+    exc_type: type[httpx.TransportError],
+) -> None:
+    """A single transport-level exception is retried and the next 200 returns."""
+    fake_client = MagicMock(spec=httpx.Client)
+    fake_client.get = MagicMock(
+        side_effect=[
+            _transport_error_instance(exc_type),
+            _mock_response(200, _ok_payload()),
+        ]
+    )
+    with MapillaryProvider(
+        access_token="MLY|TEST|TEST",
+        client=fake_client,
+        retry_initial_backoff_seconds=0.0,
+        retry_max_attempts=3,
+    ) as provider:
+        refs = list(provider.fetch_for_waypoints([_waypoint()]))
+    assert len(refs) == 1
+    assert refs[0].provider_image_id == "img-1"
+    # Two .get() calls: the failed one, then the retry that succeeded.
+    assert fake_client.get.call_count == 2
+
+
+def test_get_with_retry_exhausts_on_sustained_transport_error() -> None:
+    """Sustained transport errors exhaust retries and raise the final exception."""
+    fake_client = MagicMock(spec=httpx.Client)
+    fake_client.get = MagicMock(
+        side_effect=[_transport_error_instance(httpx.RemoteProtocolError) for _ in range(3)]
+    )
+    with (
+        MapillaryProvider(
+            access_token="MLY|TEST|TEST",
+            client=fake_client,
+            retry_initial_backoff_seconds=0.0,
+            retry_max_attempts=3,
+        ) as provider,
+        pytest.raises(httpx.RemoteProtocolError),
+    ):
+        list(provider.fetch_for_waypoints([_waypoint()]))
+    assert fake_client.get.call_count == 3
+
+
 @pytest.mark.parametrize(
     ("raw_compass_angle", "expected_heading_deg"),
     [
