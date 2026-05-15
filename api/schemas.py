@@ -18,6 +18,14 @@ API version history:
   four sub-scores carry ``is_stub=False`` in steady-state Phase 4
   responses (the registry's ``real_since_phase`` bumped to 4 for the
   two new scorers).
+- 5.0 (Phase 5, **non-breaking add**): ``SubScoreDeltas``,
+  ``SegmentDelta``, and ``DeltaResponse`` ship to back the new
+  ``GET /runs/{run_a}/delta/{run_b}`` endpoint. The shape mirrors
+  Phase 4's composite-risk decomposition — every delta row carries
+  ``composite_delta = local_contribution_delta + propagation_uplift_delta``
+  alongside per-sub-score deltas and *both* runs'
+  ``ConfidenceIndicator`` so the UI can label how confident each end
+  of the comparison was. Existing endpoints are unaffected.
 
 Branded UUID types: `SegmentId`, `RunId`. Typed ``UUID`` at runtime; the
 type alias gives a strong handle when reading IDE / mypy output.
@@ -227,3 +235,86 @@ class ScoringRunMetadata(BaseModel):
     imagery_capture_window_start: date
     imagery_capture_window_end: date
     propagation_algorithm_version: str
+
+
+# -- Phase 5 — Delta schemas -----------------------------------------------
+#
+# Field-by-field deltas (run_b - run_a) carried by the new
+# ``GET /runs/{run_a}/delta/{run_b}`` endpoint. The decomposition invariant
+# (CLAUDE.md §"Explainability") carries through to the delta path:
+# ``composite_delta == local_contribution_delta + propagation_uplift_delta``,
+# enforced by the pure-functional delta computation (Task 2.2) and asserted
+# by its property tests. Field names mirror :class:`SubScores` /
+# :class:`SegmentDetail` so a frontend iterating fields sees the same order
+# in both single-run and delta responses.
+
+
+class SubScoreDeltas(BaseModel):
+    """Per-sub-score delta values (``run_b - run_a``).
+
+    Field names and order match :class:`SubScores` exactly. Values may be
+    negative (risk went down between runs). The frontend's largest-changes
+    list typically sorts by ``abs(composite_delta)``, then surfaces the
+    per-sub-score deltas as the explanation.
+    """
+
+    lane_marking_quality: float
+    glare_exposure: float
+    junction_complexity: float
+    historical_correlation: float
+
+
+class SegmentDelta(BaseModel):
+    """One per-segment delta row.
+
+    The explainability invariant adapted for delta-land: every row carries
+    the full composite decomposition (``composite_delta`` plus the two
+    parts it decomposes into) and *both* run's confidence indicators so
+    the UI can show how confident each end of the comparison was.
+
+    Convention: positive ``composite_delta`` means risk went up from
+    ``run_a`` to ``run_b``. Negative means risk went down.
+    """
+
+    segment_id: UUID
+    composite_delta: float = Field(
+        ...,
+        description=(
+            "Composite-risk delta (``run_b.composite_risk - "
+            "run_a.composite_risk``). Equal to "
+            "``local_contribution_delta + propagation_uplift_delta`` by "
+            "construction."
+        ),
+    )
+    local_contribution_delta: float = Field(
+        ...,
+        description="Delta in the weighted local sub-score aggregate.",
+    )
+    propagation_uplift_delta: float = Field(
+        ...,
+        description=("Delta in the network-contribution portion of composite risk."),
+    )
+    sub_score_deltas: SubScoreDeltas
+    confidence_a: ConfidenceIndicator = Field(
+        ..., description="Confidence indicator from ``run_a``."
+    )
+    confidence_b: ConfidenceIndicator = Field(
+        ..., description="Confidence indicator from ``run_b``."
+    )
+
+
+class DeltaResponse(BaseModel):
+    """Response payload for ``GET /runs/{run_a}/delta/{run_b}``.
+
+    Both runs' provenance bundles ship with the response so the frontend
+    never has to fetch them separately to render the delta view.
+    Pagination fields are required — a city-scale delta can contain tens
+    of thousands of segments and clients page through them.
+    """
+
+    run_a: ScoringRunMetadata
+    run_b: ScoringRunMetadata
+    deltas: list[SegmentDelta]
+    page: int = Field(..., ge=1)
+    page_size: int = Field(..., ge=1)
+    total: int = Field(..., ge=0, description="Total number of delta rows across all pages.")
