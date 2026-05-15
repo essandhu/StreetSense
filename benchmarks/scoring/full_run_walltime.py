@@ -101,9 +101,16 @@ def _find_summary_line(lines: list[str]) -> dict[str, Any]:
 
 
 def _invoke_scoring_run(city: str, day: str) -> tuple[float, dict[str, Any], str]:
-    """Run the scoring CLI as a subprocess; return (wall_seconds, summary, stdout)."""
+    """Run the scoring CLI as a subprocess; return (wall_seconds, summary, stdout).
+
+    The subprocess is launched through ``scripts/run_with_dotenv.py`` so
+    ``.env`` is loaded into the child's ``os.environ`` exactly as
+    ``uv run`` would. This keeps DATABASE_URL / MINIO_* available
+    without requiring uv to be on PATH (Windows contributors).
+    """
     cmd = [
         sys.executable,
+        "scripts/run_with_dotenv.py",
         "-m",
         "scoring.cli",
         "run",
