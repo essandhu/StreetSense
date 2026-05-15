@@ -74,7 +74,7 @@ REQUIRED_TOP_LEVEL_FIELDS = (
     "confidence",
 )
 REQUIRED_SUBSCORES = (
-    "glare",
+    "glare_exposure",
     "lane_marking_quality",
     "junction_complexity",
     "historical_correlation",
@@ -98,13 +98,19 @@ def _sample_segment_ids_from_db(limit: int) -> list[UUID]:
         sys.exit("DATABASE_URL not set; source .env or copy .env.example to .env.")
 
     with psycopg.connect(_psycopg_dsn(url)) as conn, conn.cursor() as cur:
+        # Sample distinct segment ids; ORDER BY random() requires the
+        # randomizer in the SELECT list when used with DISTINCT, hence
+        # the subquery shape.
         cur.execute(
             """
-            SELECT DISTINCT segment_id
-            FROM segment_scores
-            WHERE scoring_run_id = (
-                SELECT id FROM scoring_runs ORDER BY scoring_run_timestamp DESC LIMIT 1
-            )
+            SELECT segment_id FROM (
+                SELECT DISTINCT segment_id
+                FROM segment_scores
+                WHERE scoring_run_id = (
+                    SELECT id FROM scoring_runs
+                    ORDER BY scoring_run_timestamp DESC LIMIT 1
+                )
+            ) AS distinct_ids
             ORDER BY random()
             LIMIT %s
             """,

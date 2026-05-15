@@ -1,0 +1,9 @@
+{
+  "nodes": 10000,
+  "edges": 50000,
+  "python_seconds": 0.3094187999959104,
+  "cpp_seconds": 0.1243118999991566,
+  "speedup": 2.489052134172269,
+  "gate": 10.0,
+  "passed": false
+}

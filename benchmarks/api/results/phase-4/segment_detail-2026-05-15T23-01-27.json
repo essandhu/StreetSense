@@ -1,0 +1,15 @@
+{
+  "endpoint": "GET /segments/{id}",
+  "phase": "phase-4",
+  "t": "2025-06-21T16:00:00+00:00",
+  "segments": 200,
+  "iters_per_segment": 3,
+  "n_samples": 601,
+  "p50_ms": 17.672,
+  "p95_ms": 39.589,
+  "p99_ms": 54.729,
+  "mean_ms": 19.882,
+  "stdev_ms": 9.389,
+  "budget_p95_ms": 100.0,
+  "shape_check_errors": {}
+}
