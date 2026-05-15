@@ -1,16 +1,18 @@
 /**
- * MapView — Phase 3 composition.
+ * MapView — Phase 4 composition.
  *
- * Wires the MapLibre base under the deck.gl glare overlay (Phase 2)
- * and the new segment-detail panel (Phase 3). Map clicks dispatch
- * `openSegment`; the panel reads `selectedSegment` from Redux and
- * fires `useSegmentDetail`.
+ * Wires the MapLibre base under the deck.gl thematic-layer overlay
+ * (composite-risk by default, switchable to any of the four
+ * sub-scores per spec AC-8) and the segment-detail panel. Map clicks
+ * dispatch `openSegment`; the panel reads `selectedSegment` from
+ * Redux and fires `useSegmentDetail`.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import type maplibregl from "maplibre-gl";
 
-import { GlareOverlay } from "../components/Map/GlareOverlay";
+import { LayerOverlay } from "../components/Map/LayerOverlay";
+import { LayerToggle } from "../components/Map/LayerToggle";
 import { Map } from "../components/Map/Map";
 import { Scrubber } from "../components/Scrubber/Scrubber";
 import { SegmentDetailPanel } from "../components/SegmentDetailPanel";
@@ -58,7 +60,8 @@ export const MapView = () => {
         onReady={setMap}
         onSegmentClick={onSegmentClick}
       />
-      <GlareOverlay map={map} />
+      <LayerOverlay map={map} />
+      <LayerToggle />
       <Scrubber />
       <SegmentDetailPanel />
     </>

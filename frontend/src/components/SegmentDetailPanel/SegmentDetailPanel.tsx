@@ -15,6 +15,7 @@ import type { ImageryReference } from "../../domain";
 import type { RootState } from "../../state/store";
 import { useAppDispatch } from "../../state/hooks";
 import { closePanel } from "../../state/selectedSegment";
+import { CompositeBreakdown } from "../CompositeBreakdown";
 import { ConfidenceDial } from "../ConfidenceDial";
 import { SubScoreChart } from "../SubScoreChart";
 
@@ -85,6 +86,14 @@ export function SegmentDetailPanel() {
           </div>
           <div className="segment-detail-panel__confidence">
             <ConfidenceDial confidence={data.confidence} />
+          </div>
+          <div className="segment-detail-panel__breakdown">
+            <CompositeBreakdown
+              compositeRisk={data.composite_risk}
+              localContribution={data.local_contribution ?? 0}
+              propagationUplift={data.propagation_uplift ?? 0}
+              algorithm={data.propagation_algorithm ?? null}
+            />
           </div>
 
           <div

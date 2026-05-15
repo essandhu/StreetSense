@@ -46,6 +46,14 @@
   justify-content: center;
 }
 
+.segment-detail-panel__breakdown {
+  display: flex;
+}
+
+.segment-detail-panel__breakdown > * {
+  flex: 1 1 auto;
+}
+
 .segment-detail-panel__imagery {
   display: flex;
   flex-wrap: wrap;

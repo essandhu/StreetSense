@@ -1,0 +1,52 @@
+.layer-toggle {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 5;
+  background: rgba(26, 26, 26, 0.92);
+  color: #e0e0e0;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 10px 12px 8px;
+  font-size: 12px;
+  line-height: 1.4;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  min-width: 180px;
+}
+
+.layer-toggle__legend {
+  padding: 0 4px;
+  color: #9a9a9a;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.layer-toggle__option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 2px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+
+.layer-toggle__option:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.layer-toggle__option--active {
+  color: #ffffff;
+}
+
+.layer-toggle__option input {
+  accent-color: #4a9eff;
+  cursor: pointer;
+}
+
+.layer-toggle__primary {
+  color: #7a7a7a;
+  font-size: 10px;
+  margin-left: 2px;
+}

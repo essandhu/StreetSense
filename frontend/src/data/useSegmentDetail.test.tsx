@@ -23,6 +23,12 @@ function _payload(id: string): SegmentDetail {
     segment_id: id,
     osm_way_id: 999,
     composite_risk: 0.42,
+    // Phase 4 (API 4.0) — split composite into local + uplift with
+    // the propagator identity. The test fixture treats this segment
+    // as a real Phase 4 row produced by pagerank-diffusion.
+    local_contribution: 0.3,
+    propagation_uplift: 0.12,
+    propagation_algorithm: { name: "pagerank-diffusion", version: "0.1.0" },
     sub_scores: {
       glare_exposure: { value: 0.3, confidence: 0.8, is_stub: false, metadata: {} },
       lane_marking_quality: { value: 0.5, confidence: 0.7, is_stub: false, metadata: {} },

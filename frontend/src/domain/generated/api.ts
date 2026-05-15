@@ -140,6 +140,28 @@ export interface components {
             };
         };
         /**
+         * PropagationAlgorithmInfo
+         * @description Composite-risk propagator identity + parameters.
+         *
+         *     Surfaced in :class:`SegmentDetail` so the UI can label the
+         *     composite-breakdown panel with the algorithm name + semver. Reads
+         *     from ``scoring_runs.propagation_algorithm_version`` (Phase 4
+         *     onwards a real ``"<name>-<semver>"`` string; pre-Phase-4 rows
+         *     carry the ``"none-phase-2"`` sentinel).
+         */
+        PropagationAlgorithmInfo: {
+            /**
+             * Name
+             * @description Stable algorithm identifier (e.g., ``"pagerank-diffusion"``). Empty when the row predates Phase 4 (sentinel branch).
+             */
+            name: string;
+            /**
+             * Version
+             * @description Algorithm semver (e.g., ``"0.1.0"``). Combined with ``name`` this reconstructs the persisted ``propagation_algorithm_version`` string.
+             */
+            version: string;
+        };
+        /**
          * SegmentDetail
          * @description Per-segment detail payload returned by GET /segments/{id}.
          *
@@ -147,6 +169,11 @@ export interface components {
          *     ``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries
          *     pre-signed URLs for the source images that backed
          *     ``sub_scores.lane_marking_quality``.
+         *
+         *     Phase 4 (API 4.0, non-breaking add): ``propagation_uplift`` and
+         *     ``local_contribution`` split ``composite_risk`` into its
+         *     explainable components; ``propagation_algorithm`` carries the
+         *     propagator identity + semver from the most recent scoring run.
          */
         SegmentDetail: {
             /**
@@ -158,9 +185,23 @@ export interface components {
             osm_way_id: number | null;
             /**
              * Composite Risk
-             * @description Composite risk in [0, 1]. Phase 3: mean of real sub-scores (glare + lane_marking). Phase 4 ships the weighted composite from the propagator.
+             * @description Composite risk. Phase 4: ``local_contribution + propagation_uplift``. The upper bound depends on the active composite weights (recorded in ADR 0006's parameters).
              */
             composite_risk: number;
+            /**
+             * Local Contribution
+             * @description Weighted local aggregate of the four sub-scores at this (segment, t). Phase 4: the same quantity the propagator received as the per-node input vector.
+             * @default 0
+             */
+            local_contribution: number;
+            /**
+             * Propagation Uplift
+             * @description Network contribution to composite risk — the portion that would not exist without the propagator. Phase 4: read directly from ``segment_scores.propagation_uplift``.
+             * @default 0
+             */
+            propagation_uplift: number;
+            /** @description Identity of the propagator that produced ``propagation_uplift``. ``None`` for pre-Phase 4 rows where the persisted ``propagation_algorithm_version`` is the sentinel ``"none-phase-2"``. */
+            propagation_algorithm?: components["schemas"]["PropagationAlgorithmInfo"] | null;
             sub_scores: components["schemas"]["SubScores"];
             confidence: components["schemas"]["ConfidenceIndicator"];
             /**

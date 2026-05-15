@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StreetSense API",
-    "version": "3.0.0"
+    "version": "4.0.0"
   },
   "paths": {
     "/segments/{segment_id}": {
@@ -247,6 +247,27 @@
         "title": "ImageryReference",
         "description": "A pre-signed pointer to one piece of source imagery."
       },
+      "PropagationAlgorithmInfo": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Stable algorithm identifier (e.g., ``\"pagerank-diffusion\"``). Empty when the row predates Phase 4 (sentinel branch)."
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Algorithm semver (e.g., ``\"0.1.0\"``). Combined with ``name`` this reconstructs the persisted ``propagation_algorithm_version`` string."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "version"
+        ],
+        "title": "PropagationAlgorithmInfo",
+        "description": "Composite-risk propagator identity + parameters.\n\nSurfaced in :class:`SegmentDetail` so the UI can label the\ncomposite-breakdown panel with the algorithm name + semver. Reads\nfrom ``scoring_runs.propagation_algorithm_version`` (Phase 4\nonwards a real ``\"<name>-<semver>\"`` string; pre-Phase-4 rows\ncarry the ``\"none-phase-2\"`` sentinel)."
+      },
       "SegmentDetail": {
         "properties": {
           "segment_id": {
@@ -268,7 +289,30 @@
           "composite_risk": {
             "type": "number",
             "title": "Composite Risk",
-            "description": "Composite risk in [0, 1]. Phase 3: mean of real sub-scores (glare + lane_marking). Phase 4 ships the weighted composite from the propagator."
+            "description": "Composite risk. Phase 4: ``local_contribution + propagation_uplift``. The upper bound depends on the active composite weights (recorded in ADR 0006's parameters)."
+          },
+          "local_contribution": {
+            "type": "number",
+            "title": "Local Contribution",
+            "description": "Weighted local aggregate of the four sub-scores at this (segment, t). Phase 4: the same quantity the propagator received as the per-node input vector.",
+            "default": 0.0
+          },
+          "propagation_uplift": {
+            "type": "number",
+            "title": "Propagation Uplift",
+            "description": "Network contribution to composite risk \u2014 the portion that would not exist without the propagator. Phase 4: read directly from ``segment_scores.propagation_uplift``.",
+            "default": 0.0
+          },
+          "propagation_algorithm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PropagationAlgorithmInfo"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Identity of the propagator that produced ``propagation_uplift``. ``None`` for pre-Phase 4 rows where the persisted ``propagation_algorithm_version`` is the sentinel ``\"none-phase-2\"``."
           },
           "sub_scores": {
             "$ref": "#/components/schemas/SubScores"
@@ -302,7 +346,7 @@
           "confidence"
         ],
         "title": "SegmentDetail",
-        "description": "Per-segment detail payload returned by GET /segments/{id}.\n\nPhase 3 (API 3.0, breaking): ``confidence`` is a\n``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries\npre-signed URLs for the source images that backed\n``sub_scores.lane_marking_quality``."
+        "description": "Per-segment detail payload returned by GET /segments/{id}.\n\nPhase 3 (API 3.0, breaking): ``confidence`` is a\n``ConfidenceIndicator`` object (not a scalar); ``imagery`` carries\npre-signed URLs for the source images that backed\n``sub_scores.lane_marking_quality``.\n\nPhase 4 (API 4.0, non-breaking add): ``propagation_uplift`` and\n``local_contribution`` split ``composite_risk`` into its\nexplainable components; ``propagation_algorithm`` carries the\npropagator identity + semver from the most recent scoring run."
       },
       "SubScore": {
         "properties": {
