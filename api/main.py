@@ -28,7 +28,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.db import close_pool
-from api.routes import admin, segments
+from api.routes import admin, runs, segments
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -60,12 +60,11 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="StreetSense API",
-        # Phase 4 (4.0, non-breaking add): SegmentDetail gains
-        # ``propagation_uplift``, ``local_contribution``, and a typed
-        # ``propagation_algorithm`` block so the composite-risk
-        # decomposition is first-class. /admin/freshness reports the
-        # two new Phase 4 sources (incidents, propagation_algorithm).
-        version="4.0.0",
+        # Phase 5 (5.0, non-breaking add): ``GET /runs/{run_a}/delta/{run_b}``
+        # ships paginated per-segment deltas with full sub-score
+        # decomposition and both runs' provenance bundles. Existing
+        # endpoints unchanged.
+        version="5.0.0",
         lifespan=_lifespan,
     )
     app.add_middleware(
@@ -77,6 +76,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(segments.router)
     app.include_router(admin.router)
+    app.include_router(runs.router)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
