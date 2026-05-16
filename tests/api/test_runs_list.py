@@ -44,9 +44,7 @@ _PERCEPTION_VERSION = "stand-in-onnx-0.1.0"
 _PROPAGATION_VERSION = "pagerank-diffusion-0.1.0"
 
 
-def _insert_scoring_run(
-    cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str
-) -> UUID:
+def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str) -> UUID:
     cur.execute(
         """
         INSERT INTO scoring_runs (

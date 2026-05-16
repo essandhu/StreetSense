@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-05-16T16:17:20.261Z",
+  "mode": "delta",
+  "note": "Hermetic — tile fetches stubbed/404; measures JS overhead floor with DeltaOverlay mounted. Re-run against deployed instance for the with-real-tiles number.",
+  "sample_count": 144,
+  "samples_over_100ms": 0,
+  "fraction_over_100ms": 0,
+  "median_ms": 16.699999999999818,
+  "mean_ms": 19.55902777777778,
+  "p95_ms": 33.399999999999636,
+  "max_ms": 33.400000000000546,
+  "budget_median_ms": 20,
+  "budget_p95_ms": 100
+}

@@ -78,10 +78,13 @@ def test_bootstrap_skip_scoring_omits_scoring_call() -> None:
 
 def test_bootstrap_halts_on_step_failure() -> None:
     """First failing step aborts — later steps are not attempted."""
-    with mock.patch(
-        "scripts.bootstrap_deploy.subprocess.run",
-        side_effect=_fail_at("imagery"),
-    ) as run, pytest.raises(SystemExit) as excinfo:
+    with (
+        mock.patch(
+            "scripts.bootstrap_deploy.subprocess.run",
+            side_effect=_fail_at("imagery"),
+        ) as run,
+        pytest.raises(SystemExit) as excinfo,
+    ):
         bootstrap("cambridge")
     assert excinfo.value.code == 2
     calls = [call.args[0] for call in run.call_args_list]

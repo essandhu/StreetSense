@@ -97,7 +97,9 @@ def _has_bare_print(source: str) -> list[int]:
     return hits
 
 
-@pytest.mark.parametrize("path", _iter_prod_python_files(), ids=lambda p: str(p.relative_to(_REPO_ROOT)))
+@pytest.mark.parametrize(
+    "path", _iter_prod_python_files(), ids=lambda p: str(p.relative_to(_REPO_ROOT))
+)
 def test_no_bare_print_calls_in_prod_python(path: Path) -> None:
     """Static check: prod Python paths use structlog, not print().
 
@@ -190,8 +192,6 @@ def test_segment_scores_reproducibility_fields_are_not_null(field: str) -> None:
     assert block, "segment_scores table definition not found"
     for line in block.splitlines():
         if field in line:
-            assert "NOT NULL" in line, (
-                f"{field} on segment_scores is no longer NOT NULL"
-            )
+            assert "NOT NULL" in line, f"{field} on segment_scores is no longer NOT NULL"
             return
     pytest.fail(f"could not locate the column definition for {field} on segment_scores")

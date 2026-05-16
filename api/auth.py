@@ -102,9 +102,7 @@ class BasicAuthMiddleware(BaseHTTPMiddleware):
         else:
             _log.info("auth.enabled", username=self._credentials[0])
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         if self._credentials is None:
             return await call_next(request)
         if request.url.path in _EXEMPT_PATHS:

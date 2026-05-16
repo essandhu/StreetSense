@@ -141,9 +141,7 @@ def smoke(
     results: list[_CheckResult] = []
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
         # /health — no auth (proves the exemption).
-        results.append(
-            _check(client, "health", f"{base}/health", headers={}, expect_json=True)
-        )
+        results.append(_check(client, "health", f"{base}/health", headers={}, expect_json=True))
         # / — SPA index (auth required when STREETSENSE_BASIC_AUTH is set
         # on the deploy).
         results.append(_check(client, "spa_root", f"{base}/", headers=auth))
@@ -158,9 +156,7 @@ def smoke(
             )
         )
         # /runs — list endpoint (Task 3.3 backend).
-        results.append(
-            _check(client, "runs_list", f"{base}/runs", headers=auth, expect_json=True)
-        )
+        results.append(_check(client, "runs_list", f"{base}/runs", headers=auth, expect_json=True))
         # Segment detail — only if we can identify one.
         segment_id = _first_segment_id(client, base, auth)
         if segment_id:
@@ -178,8 +174,7 @@ def smoke(
                 "smoke.skip",
                 check="segment_detail",
                 reason=(
-                    "no segment id available; set STREETSENSE_SMOKE_SEGMENT_ID "
-                    "to enable this check"
+                    "no segment id available; set STREETSENSE_SMOKE_SEGMENT_ID to enable this check"
                 ),
             )
         # Tile fetch — proves pg_tileserv is wired and behind the

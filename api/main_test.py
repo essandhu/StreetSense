@@ -48,9 +48,7 @@ def _seed_dist(root: Path) -> Path:
     )
     assets = dist / "assets"
     assets.mkdir()
-    (assets / "app.abc123.js").write_text(
-        "console.log('hashed bundle');", encoding="utf-8"
-    )
+    (assets / "app.abc123.js").write_text("console.log('hashed bundle');", encoding="utf-8")
     return dist
 
 
@@ -59,9 +57,7 @@ def test_frontend_dist_path_returns_none_when_env_unset_and_default_absent() -> 
     """No env var + no /app/frontend/dist on disk → no mount."""
     # The container path /app/frontend/dist exists on the deploy
     # image but should not exist on a typical dev machine.
-    assert _frontend_dist_path() is None or _frontend_dist_path() == Path(
-        "/app/frontend/dist"
-    )
+    assert _frontend_dist_path() is None or _frontend_dist_path() == Path("/app/frontend/dist")
 
 
 @pytest.mark.usefixtures("_clear_dist_env")
