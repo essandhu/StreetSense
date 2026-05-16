@@ -1,0 +1,58 @@
+# StreetSense weekly scoring Machine — Phase 5 Task 4.2 (Fly.io primary path).
+#
+# A separate Fly app from the main API. Spins up on Fly's weekly
+# schedule, runs the scoring wrapper, exits. No always-on compute
+# for re-scoring — the Machine only exists during its run.
+#
+# Bring-up (one-time):
+#   flyctl apps create streetsense-scoring
+#   flyctl secrets set -a streetsense-scoring \
+#     DATABASE_URL='<from streetsense-pg attach output>' \
+#     S3_ENDPOINT_URL='<tigris url>' \
+#     S3_ACCESS_KEY='<tigris key>' S3_SECRET_KEY='<tigris secret>'
+#   flyctl deploy -c fly.scoring.toml
+#
+# The schedule fires the configured `processes` entry — Fly invokes
+# `python -m scripts.run_scoring --city cambridge` inside a fresh
+# Machine and tears it down on exit.
+#
+# Cadence rationale (matches infra/cron.d/streetsense): weekly
+# Monday early-morning UTC ≈ US Eastern overnight. Re-scoring
+# completes before interactive traffic returns; the cron's exit
+# code (0 success / 75 already-running / non-zero failure)
+# surfaces in `flyctl logs -a streetsense-scoring`.
+
+app = "streetsense-scoring"
+primary_region = "bos"
+
+[build]
+  dockerfile = "api/Dockerfile"
+
+[env]
+  # Reuse the API image; the scoring wrapper just invokes the
+  # already-baked scoring.cli module.
+  STREETSENSE_SCORING_LOCK = "/tmp/streetsense_scoring.lock"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  # The C++ propagator's PageRank-diffusion needs a few hundred MB
+  # for Cambridge-scale graphs (Phase 4 closeout measurement). Round
+  # up to 2 GB to leave headroom for Python + ONNX runtime + the
+  # imagery loader.
+  memory_mb = 2048
+
+[processes]
+  # Fly's scheduled Machine starts the process named here.
+  scoring = "python -m scripts.run_scoring --city cambridge"
+
+[mounts]
+  # No persistent storage — the scoring wrapper writes results to
+  # Postgres and S3 (Tigris); nothing on local disk needs to survive
+  # between runs.
+
+# Fly's scheduled-start mechanism. The Machine spins up at the
+# scheduled time, runs the [processes.scoring] command, and exits.
+[[machines]]
+  schedule = "weekly"
+  auto_destroy = false

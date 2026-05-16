@@ -1,0 +1,25 @@
+# StreetSense scoring cron — single-VPS fallback shape.
+#
+# Place this file at /etc/cron.d/streetsense on the deployed VPS
+# (or use `crontab` for the streetsense user). The Fly.io primary
+# path uses a separate scheduled Machine — see fly.scoring.toml.
+#
+# Cadence: weekly, Monday 04:00 UTC. The overnight window is
+# US Eastern night (~midnight EDT) so the run completes before
+# morning interactive traffic returns and the cron's lockfile
+# doesn't conflict with a manual run from an operator inspecting
+# the system during the day.
+#
+# The wrapper holds /tmp/streetsense_scoring.lock for the duration
+# of the run; if the cron fires while a manual run is in flight it
+# exits with EX_TEMPFAIL (75) and the next slot picks up.
+#
+# Logging: lines below redirect stdout+stderr to syslog via the
+# `logger` utility tagged "streetsense-scoring". Tail with:
+#   journalctl -t streetsense-scoring -f
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# m  h  dom mon dow user           command
+  0  4   *   *   1  streetsense    cd /app && /app/.venv/bin/python -m scripts.run_scoring --city cambridge 2>&1 | logger -t streetsense-scoring
