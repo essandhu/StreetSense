@@ -32,6 +32,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 from starlette.types import Scope
 
+from api.auth import BasicAuthMiddleware
 from api.db import close_pool
 from api.routes import admin, runs, segments
 
@@ -119,6 +120,12 @@ def create_app() -> FastAPI:
         allow_methods=["GET", "OPTIONS"],
         allow_headers=["*"],
     )
+    # Basic-auth gate (Phase 5 Task 1.5). No-op when
+    # STREETSENSE_BASIC_AUTH is unset; mandatory gate when set.
+    # CORS sits *outside* auth so the browser's preflight OPTIONS
+    # round-trip can complete without credentials (browsers
+    # deliberately don't send Authorization on preflights).
+    app.add_middleware(BasicAuthMiddleware)
     app.include_router(segments.router)
     app.include_router(admin.router)
     app.include_router(runs.router)

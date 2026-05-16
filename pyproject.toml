@@ -30,6 +30,10 @@ dependencies = [
     # Object store (MinIO). Used by ingestion/imagery and api for
     # pre-signed URL assembly.
     "minio>=7.2",
+    # Basic-auth credential verification (Phase 5 Task 1.5). Single
+    # shared credential gates the whole instance per spec AC-5;
+    # bcrypt-hashed password lives in STREETSENSE_BASIC_AUTH.
+    "bcrypt>=4.2",
     # Logging / config
     "structlog>=24.4",
     "pyyaml>=6.0",
