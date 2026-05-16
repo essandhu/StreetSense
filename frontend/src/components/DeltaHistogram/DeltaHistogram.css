@@ -1,0 +1,36 @@
+.delta-histogram {
+  background: rgba(20, 20, 24, 0.92);
+  border-radius: 6px;
+  padding: 4px;
+  display: block;
+}
+
+.delta-histogram .bar {
+  fill: #5a5a64;
+  shape-rendering: crispEdges;
+}
+
+.delta-histogram .bar-highlighted {
+  fill: #f5d76e;
+}
+
+.delta-histogram .zero-tick {
+  stroke: #b4b4bc;
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+  opacity: 0.4;
+}
+
+.delta-histogram-empty {
+  background: rgba(20, 20, 24, 0.92);
+  color: #a0a0b0;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  font-style: italic;
+  padding: 16px;
+  border-radius: 6px;
+}
+
+.delta-histogram-empty p {
+  margin: 0;
+}
