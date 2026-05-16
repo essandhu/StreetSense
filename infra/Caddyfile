@@ -1,0 +1,35 @@
+# StreetSense Caddyfile — single-VPS fallback deploy.
+#
+# Caddy terminates TLS via Let's Encrypt (automatic ACME on first
+# boot for any FQDN with a public A/AAAA record pointed at this
+# host) and proxies:
+#   - /tiles/* → pg_tileserv on port 7800
+#   - everything else → FastAPI on port 8000
+#
+# Basic auth lives inside the FastAPI app (Task 1.5) so the gate
+# is uniform across both deploy paths (Fly.io + this fallback).
+# Caddy does NOT enforce auth — the proxied request body carries
+# the Authorization header straight through.
+
+{$PUBLIC_HOSTNAME} {
+    encode gzip zstd
+
+    # Issue + renew certs from Let's Encrypt automatically.
+    tls {$ACME_EMAIL}
+
+    # Vector tile endpoint (pg_tileserv).
+    handle /tiles/* {
+        reverse_proxy tileserv:7800
+    }
+
+    # Everything else: API (which also serves the SPA via
+    # FastAPI StaticFiles per ADR 0008).
+    handle {
+        reverse_proxy api:8000
+    }
+
+    log {
+        output stdout
+        format console
+    }
+}

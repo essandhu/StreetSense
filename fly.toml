@@ -1,0 +1,78 @@
+# StreetSense Fly.io deploy config — Phase 5 Task 1.4 (primary path).
+#
+# Per ADR 0008:
+#   - One always-warm Machine serves the API + the baked-in SPA via
+#     FastAPI StaticFiles. min_machines_running = 1 keeps the
+#     warm-cache budget (tile p99 < 200 ms warm) honest.
+#   - Fly Postgres (separate `flyctl postgres create`) supplies the
+#     DATABASE_URL via `flyctl postgres attach`.
+#   - Tigris (separate `fly storage create`) supplies S3-compatible
+#     bucket access via Fly secrets.
+#   - Basic auth lives inside the FastAPI app (Task 1.5), gated on
+#     STREETSENSE_BASIC_AUTH (set via `flyctl secrets set ...`).
+#   - The weekly cron is a separate scheduled-start Machine declared
+#     in [[processes]] below (or via a sibling fly.scoring.toml in
+#     Task 4.2 — TBD when that task lands).
+#
+# First-time setup (one-shot operator steps for Task 1.2):
+#   flyctl auth login
+#   flyctl apps create streetsense
+#   flyctl postgres create --name streetsense-pg --region bos
+#   flyctl postgres attach streetsense-pg --app streetsense
+#   flyctl postgres connect -a streetsense-pg
+#     → CREATE EXTENSION postgis;
+#   flyctl storage create --name streetsense-imagery
+#   flyctl secrets set \
+#     STREETSENSE_BASIC_AUTH='admin:$2b$12$...' \
+#     STREETSENSE_CORS_ORIGINS=https://streetsense.fly.dev \
+#     STREETSENSE_FRONTEND_DIST=/app/frontend/dist
+#   flyctl deploy
+
+app = "streetsense"
+primary_region = "bos"
+
+[build]
+  dockerfile = "api/Dockerfile"
+
+[env]
+  STREETSENSE_FRONTEND_DIST = "/app/frontend/dist"
+  # CORS defaults to the Fly hostname; override via `flyctl secrets`
+  # when a custom domain attaches.
+  STREETSENSE_CORS_ORIGINS = "https://streetsense.fly.dev"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # min_machines_running keeps the API warm so the first request after
+  # an idle period doesn't pay the cold-start tax — the tile-p99
+  # budget (CLAUDE.md) can't tolerate a 2-5s Machine spin-up.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["api"]
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 100
+    hard_limit = 200
+
+[[http_service.checks]]
+  grace_period = "30s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 1024
+  processes = ["api"]
+
+[processes]
+  api = "python -m scripts.serve_api --host 0.0.0.0 --port 8000"
+
+# Weekly cron Machine is declared in fly.scoring.toml (added in
+# Task 4.2) so the two Machines have independent lifecycles — the
+# scoring Machine spins up on schedule, runs `make scoring-run`,
+# and exits, never holding compute between runs.

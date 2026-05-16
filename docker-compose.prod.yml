@@ -1,0 +1,157 @@
+# StreetSense production data + service plane (single-VPS fallback).
+#
+# ADR 0008 picks Fly.io as the primary deploy target; this file is
+# the documented fallback shape (single VPS + docker compose +
+# self-hosted Postgres + self-hosted MinIO + Caddy for TLS). When
+# the Fly path hits a blocker during Task 1.2 provisioning, this
+# compose file is the next-step pivot.
+#
+# Differences from docker-compose.yml (dev):
+#   - The API image is built from api/Dockerfile (Task 1.3) — no
+#     bind mounts, no source overlay; the running container is the
+#     same artifact that ships to prod.
+#   - The frontend is baked into the API image (per ADR 0008 deploy
+#     shape) — no separate nginx container. The standalone
+#     frontend/Dockerfile is unused on this path but available if
+#     the operator wants to front it with a CDN.
+#   - Caddy fronts the world, terminates TLS via Let's Encrypt, and
+#     proxies to the API (port 8000) and pg_tileserv (port 7800).
+#     Domain and ACME email come from .env.prod.
+#   - Postgres and MinIO carry password env vars from .env.prod —
+#     never committed.
+#   - Basic auth lives inside the FastAPI app (Task 1.5), not in
+#     Caddy. Same gate, both deploy paths.
+#
+# Usage:
+#   cp .env.prod.example .env.prod && edit
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Bring-down:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod down
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: streetsense-postgres-prod
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-streetsense}
+      POSTGRES_USER: ${POSTGRES_USER:-streetsense}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --locale=C"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test:
+        - "CMD-SHELL"
+        - "pg_isready -U ${POSTGRES_USER:-streetsense} -d ${POSTGRES_DB:-streetsense} && psql -U ${POSTGRES_USER:-streetsense} -d ${POSTGRES_DB:-streetsense} -tAc \"SELECT 1 FROM pg_extension WHERE extname='postgis'\" | grep -q 1"
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    container_name: streetsense-minio-prod
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    restart: unless-stopped
+
+  minio-init:
+    image: minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    container_name: streetsense-minio-init-prod
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD &&
+      mc mb --ignore-existing local/streetsense-imagery &&
+      mc mb --ignore-existing local/streetsense-models &&
+      echo 'streetsense-imagery and streetsense-models ready'
+      "
+    restart: "no"
+
+  tileserv:
+    image: pramsey/pg_tileserv:latest
+    container_name: streetsense-tileserv-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://streetsense_app:${APP_DB_PASSWORD:?APP_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-streetsense}
+      TS_BASEPATH: /tiles
+      TS_HTTPPORT: "7800"
+      # Caddy terminates TLS and enforces same-origin; pg_tileserv
+      # itself can accept any origin internally.
+      TS_CORSORIGINS: "*"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    image: streetsense-api:${IMAGE_TAG:-latest}
+    container_name: streetsense-api-prod
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-streetsense}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-streetsense}
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY: ${MINIO_ROOT_USER}
+      S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      STREETSENSE_CORS_ORIGINS: ${PUBLIC_ORIGIN:?PUBLIC_ORIGIN must be set}
+      STREETSENSE_BASIC_AUTH: ${STREETSENSE_BASIC_AUTH:?STREETSENSE_BASIC_AUTH must be set}
+      STREETSENSE_FRONTEND_DIST: /app/frontend/dist
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: streetsense-caddy-prod
+    depends_on:
+      - api
+      - tileserv
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:?PUBLIC_HOSTNAME must be set}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL must be set}
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+    name: streetsense-pgdata-prod
+  miniodata:
+    name: streetsense-miniodata-prod
+  caddydata:
+    name: streetsense-caddydata
+  caddyconfig:
+    name: streetsense-caddyconfig
