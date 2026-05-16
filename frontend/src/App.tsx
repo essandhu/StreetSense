@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useSelector } from "react-redux";
 
 import { ModeToggle } from "./components/ModeToggle/ModeToggle";
 import type { RootState } from "./state/store";
 import { DeltaView } from "./views/DeltaView";
 import { MapView } from "./views/MapView";
+import { MethodologyView } from "./views/MethodologyView";
 
 import "./App.css";
 
@@ -11,21 +13,46 @@ const _selectMode = (s: RootState) => s.delta.mode;
 
 const App = () => {
   const mode = useSelector(_selectMode);
+  const [showMethodology, setShowMethodology] = useState(false);
+
   return (
     <div style={{ position: "absolute", inset: 0 }}>
-      {mode === "delta" ? <DeltaView /> : <MapView />}
-      <div style={modeToggleSlotStyle}>
+      {showMethodology ? <MethodologyView /> : mode === "delta" ? <DeltaView /> : <MapView />}
+      <div style={headerStyle}>
         <ModeToggle />
+        <button
+          type="button"
+          onClick={() => setShowMethodology((prev) => !prev)}
+          style={methodologyButtonStyle(showMethodology)}
+          aria-pressed={showMethodology}
+        >
+          {showMethodology ? "Close methodology" : "Methodology"}
+        </button>
       </div>
     </div>
   );
 };
 
-const modeToggleSlotStyle: React.CSSProperties = {
+const headerStyle: React.CSSProperties = {
   position: "absolute",
   top: 16,
   left: 16,
   zIndex: 20,
+  display: "flex",
+  gap: 8,
+  alignItems: "center",
 };
+
+const methodologyButtonStyle = (active: boolean): React.CSSProperties => ({
+  background: active ? "#3a4f70" : "rgba(20, 20, 24, 0.85)",
+  color: "#f5f5f7",
+  padding: "8px 14px",
+  border: 0,
+  borderRadius: 6,
+  fontFamily: "system-ui, sans-serif",
+  fontSize: 13,
+  fontWeight: active ? 600 : 400,
+  cursor: "pointer",
+});
 
 export default App;
