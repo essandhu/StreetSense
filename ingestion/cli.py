@@ -175,12 +175,8 @@ def cmd_incidents(city: str, *, years: tuple[int, ...] | None = None) -> int:
         rows_inserted=summary.rows_inserted,
         rows_skipped=summary.rows_skipped,
         rows_seen=summary.rows_seen,
-        earliest=summary.earliest_incident_at.isoformat()
-        if summary.earliest_incident_at
-        else None,
-        latest=summary.latest_incident_at.isoformat()
-        if summary.latest_incident_at
-        else None,
+        earliest=summary.earliest_incident_at.isoformat() if summary.earliest_incident_at else None,
+        latest=summary.latest_incident_at.isoformat() if summary.latest_incident_at else None,
         severity_counts=summary.severity_counts,
         total_seconds=round(t_total, 3),
     )

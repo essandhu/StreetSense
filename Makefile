@@ -29,7 +29,7 @@ UV   ?= uv
 PNPM ?= pnpm
 
 .DEFAULT_GOAL := help
-.PHONY: help seed ingest-imagery ingest-incidents seed-model api scoring-run test lint db-up db-down migrate clean
+.PHONY: help seed ingest-imagery ingest-incidents seed-model api scoring-run test test-fast test-e2e test-all lint db-up db-down migrate clean
 
 help:
 	@printf 'Targets:\n'
@@ -40,6 +40,9 @@ help:
 	@printf '  make api                Start FastAPI service\n'
 	@printf '  make scoring-run        Trigger a scoring run (Phase 1: stub)\n'
 	@printf '  make test               Run Python + frontend unit tests\n'
+	@printf '  make test-fast          Local test orchestrator (fast tier — no docker, no DB)\n'
+	@printf '  make test-e2e           Same + hermetic Playwright tier\n'
+	@printf '  make test-all           Everything incl. destructive DB tier (--yes auto)\n'
 	@printf '  make lint               Lint/format-check/typecheck everything\n'
 	@printf '  make db-up              Start data plane (Postgres + PostGIS + MinIO)\n'
 	@printf '  make db-down            Stop the data plane\n'
@@ -90,6 +93,21 @@ test-py:
 
 test-fe:
 	cd frontend && $(PNPM) test
+
+# `make test-fast` is the convenience wrapper around test_local.py —
+# default tier (no docker, no DB). Add tiers with TIERS=--e2e or
+# TIERS="--e2e --docker".
+TIERS ?=
+test-fast:
+	$(UV) run python -m scripts.test_local $(TIERS)
+
+test-e2e:
+	$(UV) run python -m scripts.test_local --e2e
+
+# Includes the destructive DB tier. Auto-confirms; only invoke when
+# you accept that the autouse TRUNCATE fixtures will wipe local data.
+test-all:
+	$(UV) run python -m scripts.test_local --all --yes
 
 # --- Lint -----------------------------------------------------------------
 lint: lint-py lint-fe

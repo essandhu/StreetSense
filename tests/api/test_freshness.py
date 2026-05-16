@@ -64,10 +64,7 @@ async def test_freshness_carries_last_ingested_at(
     assert by_name["incidents"]["metadata"].get("provider") == "massdot-impact"
     assert by_name["incidents"]["metadata"].get("adr") == "0007-incident-dataset"
     assert by_name["propagation_algorithm"]["metadata"].get("kind") == "compute"
-    assert (
-        by_name["propagation_algorithm"]["metadata"].get("adr")
-        == "0006-propagation-algorithm"
-    )
+    assert by_name["propagation_algorithm"]["metadata"].get("adr") == "0006-propagation-algorithm"
 
 
 @pytest.mark.asyncio
