@@ -1,9 +1,15 @@
 # StreetSense Fly.io deploy config — Phase 5 Task 1.4 (primary path).
 #
-# Per ADR 0008:
-#   - One always-warm Machine serves the API + the baked-in SPA via
-#     FastAPI StaticFiles. min_machines_running = 1 keeps the
-#     warm-cache budget (tile p99 < 200 ms warm) honest.
+# Per ADR 0008 (with cost-driven deviation, see below):
+#   - One Machine serves the API + the baked-in SPA via FastAPI
+#     StaticFiles. Scale-to-zero (auto_stop_machines = "stop",
+#     min_machines_running = 0) is enabled to minimise run-rate;
+#     this trades the tile-p99-warm budget on the first request
+#     after an idle period (cold start ~2-5s) for ~$3-5/mo savings.
+#     The warm-tile p99 budget still holds once the Machine is up.
+#     Revert by setting auto_stop_machines = "off" and
+#     min_machines_running = 1 if the cold-start tax becomes a
+#     blocker for the AC-6 perf measurement (Task 5.3).
 #   - Fly Postgres (separate `flyctl postgres create`) supplies the
 #     DATABASE_URL via `flyctl postgres attach`.
 #   - Tigris (separate `fly storage create`) supplies S3-compatible
@@ -43,25 +49,21 @@ primary_region = "bos"
 [http_service]
   internal_port = 8000
   force_https = true
-  # min_machines_running keeps the API warm so the first request after
-  # an idle period doesn't pay the cold-start tax — the tile-p99
-  # budget (CLAUDE.md) can't tolerate a 2-5s Machine spin-up.
-  auto_stop_machines = "off"
+  # Scale-to-zero: the Machine stops when idle and restarts on the
+  # next incoming request. Cold-start cost (~2-5s on first hit after
+  # idle) is the trade for ~$3-5/mo savings vs always-warm. The
+  # tile-p99-warm budget from CLAUDE.md is measured once the Machine
+  # is up; first-request-after-idle is explicitly out of that budget
+  # under this configuration.
+  auto_stop_machines = "stop"
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
   processes = ["api"]
 
   [http_service.concurrency]
     type = "requests"
     soft_limit = 100
     hard_limit = 200
-
-[[http_service.checks]]
-  grace_period = "30s"
-  interval = "30s"
-  method = "GET"
-  timeout = "5s"
-  path = "/health"
 
 [[vm]]
   cpu_kind = "shared"
