@@ -1,0 +1,84 @@
+.largest-changes-list {
+  background: rgba(20, 20, 24, 0.92);
+  color: #f5f5f7;
+  font-family: system-ui, sans-serif;
+  font-size: 13px;
+  border-radius: 8px;
+  padding: 8px 0;
+  max-height: 60vh;
+  overflow-y: auto;
+  min-width: 280px;
+}
+
+.largest-changes-list .placeholder {
+  padding: 16px;
+  color: #a0a0b0;
+  font-style: italic;
+  margin: 0;
+}
+
+.largest-changes-list .rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.largest-changes-list .row {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 14px;
+  cursor: pointer;
+  text-align: left;
+  border-left: 3px solid transparent;
+}
+
+.largest-changes-list .row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.largest-changes-list .row-up {
+  border-left-color: #a50026;
+}
+
+.largest-changes-list .row-down {
+  border-left-color: #1b7837;
+}
+
+.largest-changes-list .row-flat {
+  border-left-color: #b4b4bc;
+}
+
+.largest-changes-list .rank {
+  color: #6b6b7a;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.largest-changes-list .seg-id {
+  font-family: ui-monospace, "JetBrains Mono", "Fira Code", monospace;
+  color: #c0c0d0;
+}
+
+.largest-changes-list .delta {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.largest-changes-list .delta-up {
+  color: #e78a8a;
+}
+
+.largest-changes-list .delta-down {
+  color: #7fbf7b;
+}
+
+.largest-changes-list .delta-flat {
+  color: #a0a0b0;
+}
