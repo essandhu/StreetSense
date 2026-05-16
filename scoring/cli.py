@@ -24,7 +24,6 @@ Behavior:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from collections.abc import Iterable, Sequence
 from datetime import UTC, date, datetime
@@ -294,7 +293,6 @@ def cmd_run(city: str, reference_day: date) -> int:
         "stub_fallback_lane_marking_rows": stub_lane_count,
     }
     log.info("scoring_cli.summary", **summary_record)
-    print(json.dumps({"event": "scoring_cli.summary", **summary_record}), file=sys.stdout)
     return 0
 
 
