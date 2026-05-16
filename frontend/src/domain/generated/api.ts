@@ -41,6 +41,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs/{run_a}/delta/{run_b}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Runs Delta
+         * @description Return a paginated list of per-segment deltas between two runs.
+         */
+        get: operations["get_runs_delta_runs__run_a__delta__run_b__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -78,6 +98,30 @@ export interface components {
              * @enum {string}
              */
             limiter: "freshness" | "coverage" | "model";
+        };
+        /**
+         * DeltaResponse
+         * @description Response payload for ``GET /runs/{run_a}/delta/{run_b}``.
+         *
+         *     Both runs' provenance bundles ship with the response so the frontend
+         *     never has to fetch them separately to render the delta view.
+         *     Pagination fields are required — a city-scale delta can contain tens
+         *     of thousands of segments and clients page through them.
+         */
+        DeltaResponse: {
+            run_a: components["schemas"]["ScoringRunMetadata"];
+            run_b: components["schemas"]["ScoringRunMetadata"];
+            /** Deltas */
+            deltas: components["schemas"]["SegmentDelta"][];
+            /** Page */
+            page: number;
+            /** Page Size */
+            page_size: number;
+            /**
+             * Total
+             * @description Total number of delta rows across all pages.
+             */
+            total: number;
         };
         /**
          * FreshnessEntry
@@ -160,6 +204,84 @@ export interface components {
              * @description Algorithm semver (e.g., ``"0.1.0"``). Combined with ``name`` this reconstructs the persisted ``propagation_algorithm_version`` string.
              */
             version: string;
+        };
+        /**
+         * ScoringRunMetadata
+         * @description Provenance carried with any score-bearing response.
+         *
+         *     Phase 1 sets `perception_model_version`, `imagery_capture_window`, and
+         *     `propagation_algorithm_version` to stable stub values so the shape is
+         *     locked. Real values arrive in later phases.
+         */
+        ScoringRunMetadata: {
+            /**
+             * Scoring Run Id
+             * Format: uuid
+             */
+            scoring_run_id: string;
+            /**
+             * Scoring Run Timestamp
+             * Format: date-time
+             */
+            scoring_run_timestamp: string;
+            /** Perception Model Version */
+            perception_model_version: string;
+            /**
+             * Osm Snapshot Date
+             * Format: date
+             */
+            osm_snapshot_date: string;
+            /**
+             * Imagery Capture Window Start
+             * Format: date
+             */
+            imagery_capture_window_start: string;
+            /**
+             * Imagery Capture Window End
+             * Format: date
+             */
+            imagery_capture_window_end: string;
+            /** Propagation Algorithm Version */
+            propagation_algorithm_version: string;
+        };
+        /**
+         * SegmentDelta
+         * @description One per-segment delta row.
+         *
+         *     The explainability invariant adapted for delta-land: every row carries
+         *     the full composite decomposition (``composite_delta`` plus the two
+         *     parts it decomposes into) and *both* run's confidence indicators so
+         *     the UI can show how confident each end of the comparison was.
+         *
+         *     Convention: positive ``composite_delta`` means risk went up from
+         *     ``run_a`` to ``run_b``. Negative means risk went down.
+         */
+        SegmentDelta: {
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /**
+             * Composite Delta
+             * @description Composite-risk delta (``run_b.composite_risk - run_a.composite_risk``). Equal to ``local_contribution_delta + propagation_uplift_delta`` by construction.
+             */
+            composite_delta: number;
+            /**
+             * Local Contribution Delta
+             * @description Delta in the weighted local sub-score aggregate.
+             */
+            local_contribution_delta: number;
+            /**
+             * Propagation Uplift Delta
+             * @description Delta in the network-contribution portion of composite risk.
+             */
+            propagation_uplift_delta: number;
+            sub_score_deltas: components["schemas"]["SubScoreDeltas"];
+            /** @description Confidence indicator from ``run_a``. */
+            confidence_a: components["schemas"]["ConfidenceIndicator"];
+            /** @description Confidence indicator from ``run_b``. */
+            confidence_b: components["schemas"]["ConfidenceIndicator"];
         };
         /**
          * SegmentDetail
@@ -245,6 +367,25 @@ export interface components {
             metadata?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * SubScoreDeltas
+         * @description Per-sub-score delta values (``run_b - run_a``).
+         *
+         *     Field names and order match :class:`SubScores` exactly. Values may be
+         *     negative (risk went down between runs). The frontend's largest-changes
+         *     list typically sorts by ``abs(composite_delta)``, then surfaces the
+         *     per-sub-score deltas as the explanation.
+         */
+        SubScoreDeltas: {
+            /** Lane Marking Quality */
+            lane_marking_quality: number;
+            /** Glare Exposure */
+            glare_exposure: number;
+            /** Junction Complexity */
+            junction_complexity: number;
+            /** Historical Correlation */
+            historical_correlation: number;
         };
         /**
          * SubScores
@@ -333,6 +474,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FreshnessReport"];
+                };
+            };
+        };
+    };
+    get_runs_delta_runs__run_a__delta__run_b__get: {
+        parameters: {
+            query?: {
+                /** @description Optional ISO-8601 UTC instant. Its hour-of-day picks the row pair on each side. Omitted ⇒ noon UTC. */
+                t?: string | null;
+                /** @description 1-indexed page number. */
+                page?: number;
+                /** @description Rows per page. Capped to keep p99 within the tile budget. */
+                page_size?: number;
+            };
+            header?: never;
+            path: {
+                run_a: string;
+                run_b: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeltaResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

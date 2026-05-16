@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "StreetSense API",
-    "version": "4.0.0"
+    "version": "5.0.0"
   },
   "paths": {
     "/segments/{segment_id}": {
@@ -89,6 +89,106 @@
         }
       }
     },
+    "/runs/{run_a}/delta/{run_b}": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Get Runs Delta",
+        "description": "Return a paginated list of per-segment deltas between two runs.",
+        "operationId": "get_runs_delta_runs__run_a__delta__run_b__get",
+        "parameters": [
+          {
+            "name": "run_a",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run A"
+            }
+          },
+          {
+            "name": "run_b",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Run B"
+            }
+          },
+          {
+            "name": "t",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional ISO-8601 UTC instant. Its hour-of-day picks the row pair on each side. Omitted \u21d2 noon UTC.",
+              "title": "T"
+            },
+            "description": "Optional ISO-8601 UTC instant. Its hour-of-day picks the row pair on each side. Omitted \u21d2 noon UTC."
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "1-indexed page number.",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "1-indexed page number."
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 1000,
+              "minimum": 1,
+              "description": "Rows per page. Capped to keep p99 within the tile budget.",
+              "default": 100,
+              "title": "Page Size"
+            },
+            "description": "Rows per page. Capped to keep p99 within the tile budget."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeltaResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health": {
       "get": {
         "tags": [
@@ -142,6 +242,50 @@
         ],
         "title": "ConfidenceIndicator",
         "description": "Per-segment confidence + the input that limited it (spec Tech Note 4).\n\n``value`` is the min-rule combination of ``freshness``, ``coverage``,\nand ``1 - model_uncertainty``. ``limiter`` names whichever of the\nthree drove the value lowest."
+      },
+      "DeltaResponse": {
+        "properties": {
+          "run_a": {
+            "$ref": "#/components/schemas/ScoringRunMetadata"
+          },
+          "run_b": {
+            "$ref": "#/components/schemas/ScoringRunMetadata"
+          },
+          "deltas": {
+            "items": {
+              "$ref": "#/components/schemas/SegmentDelta"
+            },
+            "type": "array",
+            "title": "Deltas"
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page"
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Page Size"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total",
+            "description": "Total number of delta rows across all pages."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_a",
+          "run_b",
+          "deltas",
+          "page",
+          "page_size",
+          "total"
+        ],
+        "title": "DeltaResponse",
+        "description": "Response payload for ``GET /runs/{run_a}/delta/{run_b}``.\n\nBoth runs' provenance bundles ship with the response so the frontend\nnever has to fetch them separately to render the delta view.\nPagination fields are required \u2014 a city-scale delta can contain tens\nof thousands of segments and clients page through them."
       },
       "FreshnessEntry": {
         "properties": {
@@ -268,6 +412,102 @@
         "title": "PropagationAlgorithmInfo",
         "description": "Composite-risk propagator identity + parameters.\n\nSurfaced in :class:`SegmentDetail` so the UI can label the\ncomposite-breakdown panel with the algorithm name + semver. Reads\nfrom ``scoring_runs.propagation_algorithm_version`` (Phase 4\nonwards a real ``\"<name>-<semver>\"`` string; pre-Phase-4 rows\ncarry the ``\"none-phase-2\"`` sentinel)."
       },
+      "ScoringRunMetadata": {
+        "properties": {
+          "scoring_run_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Scoring Run Id"
+          },
+          "scoring_run_timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Scoring Run Timestamp"
+          },
+          "perception_model_version": {
+            "type": "string",
+            "title": "Perception Model Version"
+          },
+          "osm_snapshot_date": {
+            "type": "string",
+            "format": "date",
+            "title": "Osm Snapshot Date"
+          },
+          "imagery_capture_window_start": {
+            "type": "string",
+            "format": "date",
+            "title": "Imagery Capture Window Start"
+          },
+          "imagery_capture_window_end": {
+            "type": "string",
+            "format": "date",
+            "title": "Imagery Capture Window End"
+          },
+          "propagation_algorithm_version": {
+            "type": "string",
+            "title": "Propagation Algorithm Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scoring_run_id",
+          "scoring_run_timestamp",
+          "perception_model_version",
+          "osm_snapshot_date",
+          "imagery_capture_window_start",
+          "imagery_capture_window_end",
+          "propagation_algorithm_version"
+        ],
+        "title": "ScoringRunMetadata",
+        "description": "Provenance carried with any score-bearing response.\n\nPhase 1 sets `perception_model_version`, `imagery_capture_window`, and\n`propagation_algorithm_version` to stable stub values so the shape is\nlocked. Real values arrive in later phases."
+      },
+      "SegmentDelta": {
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Segment Id"
+          },
+          "composite_delta": {
+            "type": "number",
+            "title": "Composite Delta",
+            "description": "Composite-risk delta (``run_b.composite_risk - run_a.composite_risk``). Equal to ``local_contribution_delta + propagation_uplift_delta`` by construction."
+          },
+          "local_contribution_delta": {
+            "type": "number",
+            "title": "Local Contribution Delta",
+            "description": "Delta in the weighted local sub-score aggregate."
+          },
+          "propagation_uplift_delta": {
+            "type": "number",
+            "title": "Propagation Uplift Delta",
+            "description": "Delta in the network-contribution portion of composite risk."
+          },
+          "sub_score_deltas": {
+            "$ref": "#/components/schemas/SubScoreDeltas"
+          },
+          "confidence_a": {
+            "$ref": "#/components/schemas/ConfidenceIndicator",
+            "description": "Confidence indicator from ``run_a``."
+          },
+          "confidence_b": {
+            "$ref": "#/components/schemas/ConfidenceIndicator",
+            "description": "Confidence indicator from ``run_b``."
+          }
+        },
+        "type": "object",
+        "required": [
+          "segment_id",
+          "composite_delta",
+          "local_contribution_delta",
+          "propagation_uplift_delta",
+          "sub_score_deltas",
+          "confidence_a",
+          "confidence_b"
+        ],
+        "title": "SegmentDelta",
+        "description": "One per-segment delta row.\n\nThe explainability invariant adapted for delta-land: every row carries\nthe full composite decomposition (``composite_delta`` plus the two\nparts it decomposes into) and *both* run's confidence indicators so\nthe UI can show how confident each end of the comparison was.\n\nConvention: positive ``composite_delta`` means risk went up from\n``run_a`` to ``run_b``. Negative means risk went down."
+      },
       "SegmentDetail": {
         "properties": {
           "segment_id": {
@@ -383,6 +623,35 @@
         ],
         "title": "SubScore",
         "description": "One sub-score's per-segment, per-timestamp output as exposed at\nthe API boundary.\n\nMirrors `scoring.interface.SubScoreResult` but lives in `api/` so\nthe API can evolve its serialization independently if needed."
+      },
+      "SubScoreDeltas": {
+        "properties": {
+          "lane_marking_quality": {
+            "type": "number",
+            "title": "Lane Marking Quality"
+          },
+          "glare_exposure": {
+            "type": "number",
+            "title": "Glare Exposure"
+          },
+          "junction_complexity": {
+            "type": "number",
+            "title": "Junction Complexity"
+          },
+          "historical_correlation": {
+            "type": "number",
+            "title": "Historical Correlation"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lane_marking_quality",
+          "glare_exposure",
+          "junction_complexity",
+          "historical_correlation"
+        ],
+        "title": "SubScoreDeltas",
+        "description": "Per-sub-score delta values (``run_b - run_a``).\n\nField names and order match :class:`SubScores` exactly. Values may be\nnegative (risk went down between runs). The frontend's largest-changes\nlist typically sorts by ``abs(composite_delta)``, then surfaces the\nper-sub-score deltas as the explanation."
       },
       "SubScores": {
         "properties": {

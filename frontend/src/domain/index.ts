@@ -29,6 +29,14 @@ export type ImageryReference = components["schemas"]["ImageryReference"];
 export type FreshnessReport = components["schemas"]["FreshnessReport"];
 export type FreshnessEntry = components["schemas"]["FreshnessEntry"];
 
+// Phase 5 — delta endpoint shapes. Field order mirrors `SubScores` so a
+// frontend iterating fields sees the same order in both single-run and
+// delta responses.
+export type ScoringRunMetadata = components["schemas"]["ScoringRunMetadata"];
+export type SubScoreDeltas = components["schemas"]["SubScoreDeltas"];
+export type SegmentDelta = components["schemas"]["SegmentDelta"];
+export type DeltaResponse = components["schemas"]["DeltaResponse"];
+
 /** Limiter values surfaced by the API's ConfidenceIndicator. */
 export type ConfidenceLimiter = ConfidenceIndicator["limiter"];
 
