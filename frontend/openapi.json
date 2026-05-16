@@ -89,6 +89,28 @@
         }
       }
     },
+    "/runs": {
+      "get": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "List Runs",
+        "description": "Return every scoring run with full provenance, newest first.\n\nBacks the RunPicker (Task 3.3) \u2014 the delta endpoint requires the\ncaller to already know two run UUIDs, so a separate list endpoint\nis the discovery path. Newest-first matches what the picker shows\non open: the most recent run pre-selected makes the common-case\n\"compare last run to the one before\" workflow a single click.\n\nNo pagination yet: scoring runs are weekly, so the list grows at\n~52 rows/year. If a long-running deploy ever pushes past a useful\npage size, this endpoint can grow ``page`` / ``page_size`` query\nparams alongside :class:`RunListResponse` without a breaking\nchange.",
+        "operationId": "list_runs_runs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunListResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/runs/{run_a}/delta/{run_b}": {
       "get": {
         "tags": [
@@ -411,6 +433,23 @@
         ],
         "title": "PropagationAlgorithmInfo",
         "description": "Composite-risk propagator identity + parameters.\n\nSurfaced in :class:`SegmentDetail` so the UI can label the\ncomposite-breakdown panel with the algorithm name + semver. Reads\nfrom ``scoring_runs.propagation_algorithm_version`` (Phase 4\nonwards a real ``\"<name>-<semver>\"`` string; pre-Phase-4 rows\ncarry the ``\"none-phase-2\"`` sentinel)."
+      },
+      "RunListResponse": {
+        "properties": {
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/ScoringRunMetadata"
+            },
+            "type": "array",
+            "title": "Runs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "runs"
+        ],
+        "title": "RunListResponse",
+        "description": "Response payload for ``GET /runs`` (Task 3.3 backend prep).\n\nEvery persisted scoring run with its full six-field provenance bundle,\nordered newest-first by ``scoring_run_timestamp``. Wrapped (rather\nthan returning a bare list) so a future need for paging fields or a\nsummary count can land without a breaking response shape.\n\nBacks the RunPicker dropdowns (Task 3.3). The same\n:class:`ScoringRunMetadata` rows that the delta endpoint ships\ninside :class:`DeltaResponse` carry over here unchanged so the\nfrontend's domain types stay aligned."
       },
       "ScoringRunMetadata": {
         "properties": {

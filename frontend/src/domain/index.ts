@@ -36,6 +36,7 @@ export type ScoringRunMetadata = components["schemas"]["ScoringRunMetadata"];
 export type SubScoreDeltas = components["schemas"]["SubScoreDeltas"];
 export type SegmentDelta = components["schemas"]["SegmentDelta"];
 export type DeltaResponse = components["schemas"]["DeltaResponse"];
+export type RunListResponse = components["schemas"]["RunListResponse"];
 
 /** Limiter values surfaced by the API's ConfidenceIndicator. */
 export type ConfidenceLimiter = ConfidenceIndicator["limiter"];

@@ -318,3 +318,20 @@ class DeltaResponse(BaseModel):
     page: int = Field(..., ge=1)
     page_size: int = Field(..., ge=1)
     total: int = Field(..., ge=0, description="Total number of delta rows across all pages.")
+
+
+class RunListResponse(BaseModel):
+    """Response payload for ``GET /runs`` (Task 3.3 backend prep).
+
+    Every persisted scoring run with its full six-field provenance bundle,
+    ordered newest-first by ``scoring_run_timestamp``. Wrapped (rather
+    than returning a bare list) so a future need for paging fields or a
+    summary count can land without a breaking response shape.
+
+    Backs the RunPicker dropdowns (Task 3.3). The same
+    :class:`ScoringRunMetadata` rows that the delta endpoint ships
+    inside :class:`DeltaResponse` carry over here unchanged so the
+    frontend's domain types stay aligned.
+    """
+
+    runs: list[ScoringRunMetadata]

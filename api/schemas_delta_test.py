@@ -20,6 +20,7 @@ from pydantic import ValidationError
 from api.schemas import (
     ConfidenceIndicator,
     DeltaResponse,
+    RunListResponse,
     ScoringRunMetadata,
     SegmentDelta,
     SubScoreDeltas,
@@ -194,3 +195,39 @@ def test_delta_response_pagination_fields_required() -> None:
                 "deltas": [],
             }
         )
+
+
+# -- RunListResponse -------------------------------------------------------
+
+
+def test_run_list_response_empty_is_valid() -> None:
+    """A deploy with no scoring runs yet returns a well-formed empty list,
+    not a 404 — the endpoint exists; the list is just empty."""
+    response = RunListResponse(runs=[])
+    assert response.runs == []
+
+
+def test_run_list_response_roundtrip_preserves_order() -> None:
+    """The list ordering is part of the contract — the picker shows the
+    first item pre-selected, so 'newest first' must survive serialization."""
+    run_old = _run_metadata()
+    run_new = _run_metadata()
+    response = RunListResponse(runs=[run_new, run_old])
+    reloaded = RunListResponse.model_validate(response.model_dump(mode="json"))
+    assert [r.scoring_run_id for r in reloaded.runs] == [
+        run_new.scoring_run_id,
+        run_old.scoring_run_id,
+    ]
+
+
+def test_run_list_response_carries_full_provenance() -> None:
+    """Each row in the list carries the same six-field bundle that
+    DeltaResponse and SegmentDetail ship — no truncated 'just the ID + ts'
+    shortcut."""
+    response = RunListResponse(runs=[_run_metadata()])
+    row = response.runs[0]
+    assert row.perception_model_version
+    assert row.propagation_algorithm_version
+    assert row.osm_snapshot_date is not None
+    assert row.imagery_capture_window_start is not None
+    assert row.imagery_capture_window_end is not None

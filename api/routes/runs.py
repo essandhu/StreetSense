@@ -69,6 +69,7 @@ from api.schemas import (
     ConfidenceIndicator,
     DeltaResponse,
     RunId,
+    RunListResponse,
     ScoringRunMetadata,
     SegmentDelta,
 )
@@ -92,6 +93,20 @@ SELECT
     propagation_algorithm_version
 FROM scoring_runs
 WHERE id = %(run_id)s
+"""
+
+
+_LIST_RUNS_SQL = """
+SELECT
+    id,
+    scoring_run_timestamp,
+    perception_model_version,
+    osm_snapshot_date,
+    lower(imagery_capture_window) AS imagery_capture_window_start,
+    upper(imagery_capture_window) AS imagery_capture_window_end,
+    propagation_algorithm_version
+FROM scoring_runs
+ORDER BY scoring_run_timestamp DESC
 """
 
 
@@ -177,6 +192,48 @@ def _resolve_target_hour(t: datetime | None) -> int:
         return _DEFAULT_HOUR
     t_utc = t if t.tzinfo is not None else t.replace(tzinfo=UTC)
     return t_utc.astimezone(UTC).hour
+
+
+@router.get("", response_model=RunListResponse)
+async def list_runs() -> RunListResponse:
+    """Return every scoring run with full provenance, newest first.
+
+    Backs the RunPicker (Task 3.3) — the delta endpoint requires the
+    caller to already know two run UUIDs, so a separate list endpoint
+    is the discovery path. Newest-first matches what the picker shows
+    on open: the most recent run pre-selected makes the common-case
+    "compare last run to the one before" workflow a single click.
+
+    No pagination yet: scoring runs are weekly, so the list grows at
+    ~52 rows/year. If a long-running deploy ever pushes past a useful
+    page size, this endpoint can grow ``page`` / ``page_size`` query
+    params alongside :class:`RunListResponse` without a breaking
+    change.
+    """
+    async with conn() as connection, connection.cursor() as cur:
+        await cur.execute(_LIST_RUNS_SQL)
+        rows = await cur.fetchall()
+    runs = [
+        ScoringRunMetadata(
+            scoring_run_id=RunId(rid),
+            scoring_run_timestamp=ts,
+            perception_model_version=perception_version,
+            osm_snapshot_date=osm_date,
+            imagery_capture_window_start=imagery_start,
+            imagery_capture_window_end=imagery_end,
+            propagation_algorithm_version=propagation_version,
+        )
+        for (
+            rid,
+            ts,
+            perception_version,
+            osm_date,
+            imagery_start,
+            imagery_end,
+            propagation_version,
+        ) in rows
+    ]
+    return RunListResponse(runs=runs)
 
 
 @router.get("/{run_a}/delta/{run_b}", response_model=DeltaResponse)

@@ -41,6 +41,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Runs
+         * @description Return every scoring run with full provenance, newest first.
+         *
+         *     Backs the RunPicker (Task 3.3) — the delta endpoint requires the
+         *     caller to already know two run UUIDs, so a separate list endpoint
+         *     is the discovery path. Newest-first matches what the picker shows
+         *     on open: the most recent run pre-selected makes the common-case
+         *     "compare last run to the one before" workflow a single click.
+         *
+         *     No pagination yet: scoring runs are weekly, so the list grows at
+         *     ~52 rows/year. If a long-running deploy ever pushes past a useful
+         *     page size, this endpoint can grow ``page`` / ``page_size`` query
+         *     params alongside :class:`RunListResponse` without a breaking
+         *     change.
+         */
+        get: operations["list_runs_runs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/runs/{run_a}/delta/{run_b}": {
         parameters: {
             query?: never;
@@ -204,6 +236,24 @@ export interface components {
              * @description Algorithm semver (e.g., ``"0.1.0"``). Combined with ``name`` this reconstructs the persisted ``propagation_algorithm_version`` string.
              */
             version: string;
+        };
+        /**
+         * RunListResponse
+         * @description Response payload for ``GET /runs`` (Task 3.3 backend prep).
+         *
+         *     Every persisted scoring run with its full six-field provenance bundle,
+         *     ordered newest-first by ``scoring_run_timestamp``. Wrapped (rather
+         *     than returning a bare list) so a future need for paging fields or a
+         *     summary count can land without a breaking response shape.
+         *
+         *     Backs the RunPicker dropdowns (Task 3.3). The same
+         *     :class:`ScoringRunMetadata` rows that the delta endpoint ships
+         *     inside :class:`DeltaResponse` carry over here unchanged so the
+         *     frontend's domain types stay aligned.
+         */
+        RunListResponse: {
+            /** Runs */
+            runs: components["schemas"]["ScoringRunMetadata"][];
         };
         /**
          * ScoringRunMetadata
@@ -474,6 +524,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FreshnessReport"];
+                };
+            };
+        };
+    };
+    list_runs_runs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunListResponse"];
                 };
             };
         };
