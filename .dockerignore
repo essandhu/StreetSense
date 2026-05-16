@@ -1,0 +1,62 @@
+# StreetSense .dockerignore — minimize build context size and avoid
+# leaking local-only artifacts into the image.
+#
+# Both api/Dockerfile and frontend/Dockerfile build from the repo root
+# (multi-stage), so this file is the single source of truth.
+
+# --- VCS + tooling -------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+.github
+.editorconfig
+
+# --- Local venv + caches -------------------------------------------------
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+htmlcov
+.coverage
+coverage.xml
+
+# --- Node / frontend caches ---------------------------------------------
+frontend/node_modules
+frontend/dist
+frontend/coverage
+frontend/playwright-report
+frontend/test-results
+**/node_modules
+
+# --- C++ build artifacts (rebuilt per-image-build) ----------------------
+scoring/propagator/build
+scoring/propagator/build-*
+**/CMakeFiles
+**/_deps
+**/skbuild-*
+**/__pycache__
+
+# --- Conductor / docs (gitignored locally already; redundant safety) ----
+conductor
+docs
+
+# --- Editor / OS noise --------------------------------------------------
+.vscode
+.idea
+*.swp
+.DS_Store
+Thumbs.db
+
+# --- Benchmark + test results --------------------------------------------
+benchmarks/frontend/results
+benchmarks/propagator/*.json
+benchmarks/api/results
+playwright-report
+playwright/.cache
+
+# --- Anything that doesn't ship to the image ----------------------------
+*.log
+*.tmp
+README.md.bak
