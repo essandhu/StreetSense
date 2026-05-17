@@ -35,7 +35,7 @@ from starlette.types import Scope
 from api.auth import BasicAuthMiddleware
 from api.db import close_pool
 from api.dependencies import UnknownCitySlug
-from api.routes import admin, runs, segments
+from api.routes import admin, cities, runs, segments
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
@@ -127,6 +127,7 @@ def create_app() -> FastAPI:
     # round-trip can complete without credentials (browsers
     # deliberately don't send Authorization on preflights).
     app.add_middleware(BasicAuthMiddleware)
+    app.include_router(cities.router)
     app.include_router(segments.router)
     app.include_router(admin.router)
     app.include_router(runs.router)
