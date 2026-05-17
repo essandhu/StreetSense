@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSelector } from "react-redux";
 
+import { CitySelector } from "./components/AppShell/CitySelector";
 import { ModeToggle } from "./components/ModeToggle/ModeToggle";
 import type { RootState } from "./state/store";
 import { DeltaView } from "./views/DeltaView";
@@ -19,6 +20,7 @@ const App = () => {
     <div style={{ position: "absolute", inset: 0 }}>
       {showMethodology ? <MethodologyView /> : mode === "delta" ? <DeltaView /> : <MapView />}
       <div style={headerStyle}>
+        <CitySelector />
         <ModeToggle />
         <button
           type="button"

@@ -38,6 +38,27 @@ export type SegmentDelta = components["schemas"]["SegmentDelta"];
 export type DeltaResponse = components["schemas"]["DeltaResponse"];
 export type RunListResponse = components["schemas"]["RunListResponse"];
 
+// Phase 4b — GET /api/cities. The endpoint returns a manual `Response`
+// (ETag-controlled, 304-aware), which means FastAPI cannot register a
+// response_model and the generated `paths["/api/cities"]` types ship as
+// `unknown`. We declare the shape explicitly here so the rest of the
+// frontend can consume the typed payload; the shape matches the
+// `api.schemas.City` Pydantic model 1:1.
+export type City = {
+  id: string;
+  slug: string;
+  name: string;
+  /** WGS84 bounding box as [min_lon, min_lat, max_lon, max_lat]. */
+  bbox: [number, number, number, number];
+  default_zoom: number;
+  /** IANA timezone string (e.g., "America/Phoenix"). */
+  timezone: string;
+};
+
+export type CityListResponse = {
+  cities: City[];
+};
+
 /** Limiter values surfaced by the API's ConfidenceIndicator. */
 export type ConfidenceLimiter = ConfidenceIndicator["limiter"];
 
