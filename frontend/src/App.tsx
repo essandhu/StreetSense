@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { CitySelector } from "./components/AppShell/CitySelector";
 import { ModeToggle } from "./components/ModeToggle/ModeToggle";
 import { useActiveCityUrlSync } from "./state/useActiveCityUrlSync";
+import { useClearSelectionOnCitySwitch } from "./state/useClearSelectionOnCitySwitch";
 import { useScrubberCityReset } from "./state/useScrubberCityReset";
 import type { RootState } from "./state/store";
 import { DeltaView } from "./views/DeltaView";
@@ -27,6 +28,11 @@ const App = () => {
   // a fresh deep-link should land at the new city's noon rather
   // than the scrubber slice's cambridge-shaped default.
   useScrubberCityReset();
+  // Phase 4b Task 4.8: clear segment + run selections on city switch.
+  // A segment from city A isn't valid in city B; a (runA, runB) pair
+  // refers to one city's scoring history. Mount-time is a no-op so
+  // pre-existing selections survive the first render.
+  useClearSelectionOnCitySwitch();
 
   return (
     <div style={{ position: "absolute", inset: 0 }}>
