@@ -36,11 +36,109 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Literal, NewType
 from uuid import UUID
+from zoneinfo import available_timezones
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 SegmentId = NewType("SegmentId", UUID)
 RunId = NewType("RunId", UUID)
+CityId = NewType("CityId", UUID)
+
+
+# Cached at import — zoneinfo lookups are filesystem reads. The set is
+# the canonical IANA tz database from the running CPython install.
+_IANA_TIMEZONES: frozenset[str] = frozenset(available_timezones())
+
+
+class City(BaseModel):
+    """A configured StreetSense city.
+
+    Crosses two boundaries:
+
+    1. ``GET /api/cities`` returns ``list[City]`` (Phase 4b Task 3.4).
+    2. The seed-cities loader (Task 1.6) converts each YAML config into
+       a :class:`City`, generates a UUID, and writes it to the
+       ``cities`` table.
+
+    The YAML-on-disk shape (:class:`ingestion.config.CityConfig`) carries
+    fields that don't cross the API boundary (Geofabrik URL, cache
+    path); :class:`City` is the trimmed-down DB / API shape.
+
+    ``bbox`` is stored as ``[min_lon, min_lat, max_lon, max_lat]`` to
+    match MapLibre's ``fitBounds`` expectations and the existing
+    ``config/cities/__schema__.yaml`` convention. The DB stores the
+    same bbox as ``geometry(Polygon, 4326)`` via ``ST_MakeEnvelope``;
+    the JSON form is the wire / config form.
+    """
+
+    id: UUID | None = Field(
+        None,
+        description=(
+            "Database UUID. ``None`` when constructed from YAML pre-insert; "
+            "populated when read back from the cities table or after seeding."
+        ),
+    )
+    slug: str = Field(
+        ...,
+        pattern=r"^[a-z][a-z0-9_-]*$",
+        description=(
+            "Lowercase identifier. Must start with [a-z], may contain "
+            "lowercase letters, digits, hyphens, and underscores. Used "
+            "in URLs (``/api/cities/{slug}/...``) and as the YAML "
+            "filename stem."
+        ),
+    )
+    name: str = Field(..., min_length=1, description="Display name (e.g., 'Phoenix, AZ').")
+    bbox: tuple[float, float, float, float] = Field(
+        ...,
+        description=(
+            "WGS84 bounding box as [min_lon, min_lat, max_lon, max_lat]. "
+            "Stored in the DB as ``geometry(Polygon, 4326)``."
+        ),
+    )
+    default_zoom: int = Field(
+        ...,
+        ge=1,
+        le=22,
+        description=(
+            "Initial MapLibre zoom level when this city becomes active. "
+            "Range matches MapLibre's valid zoom levels."
+        ),
+    )
+    timezone: str = Field(
+        ...,
+        min_length=1,
+        description=(
+            "IANA timezone name (e.g., 'America/Phoenix'). Used by the "
+            "time scrubber to seed at local solar noon on city switch."
+        ),
+    )
+
+    @field_validator("bbox")
+    @classmethod
+    def _validate_bbox_ranges(
+        cls, value: tuple[float, float, float, float]
+    ) -> tuple[float, float, float, float]:
+        min_lon, min_lat, max_lon, max_lat = value
+        if not (-180.0 <= min_lon <= 180.0) or not (-180.0 <= max_lon <= 180.0):
+            raise ValueError(f"bbox longitude out of WGS84 range: min={min_lon}, max={max_lon}")
+        if not (-90.0 <= min_lat <= 90.0) or not (-90.0 <= max_lat <= 90.0):
+            raise ValueError(f"bbox latitude out of WGS84 range: min={min_lat}, max={max_lat}")
+        if min_lon >= max_lon:
+            raise ValueError(f"bbox min_lon ({min_lon}) must be less than max_lon ({max_lon})")
+        if min_lat >= max_lat:
+            raise ValueError(f"bbox min_lat ({min_lat}) must be less than max_lat ({max_lat})")
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def _validate_iana_timezone(cls, value: str) -> str:
+        if value not in _IANA_TIMEZONES:
+            raise ValueError(
+                f"timezone {value!r} is not a recognized IANA name "
+                "(see zoneinfo.available_timezones())"
+            )
+        return value
 
 
 class SubScore(BaseModel):

@@ -22,7 +22,6 @@ from pydantic import ValidationError
 
 from api.schemas import City
 
-
 # -- Construction helpers --------------------------------------------------
 
 

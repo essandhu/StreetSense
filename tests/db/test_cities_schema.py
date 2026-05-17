@@ -90,14 +90,10 @@ class TestCitiesTableShape:
 
     def test_slug_is_unique(self, owner_conn: psycopg.Connection[Any]) -> None:
         defs = _index_definitions(owner_conn, "cities")
-        unique_on_slug = [
-            d for d in defs if "UNIQUE" in d.upper() and "(slug)" in d.lower()
-        ]
+        unique_on_slug = [d for d in defs if "UNIQUE" in d.upper() and "(slug)" in d.lower()]
         assert unique_on_slug, f"No UNIQUE index on cities(slug). Found: {defs}"
 
-    def test_duplicate_slug_inserts_are_rejected(
-        self, owner_conn: psycopg.Connection[Any]
-    ) -> None:
+    def test_duplicate_slug_inserts_are_rejected(self, owner_conn: psycopg.Connection[Any]) -> None:
         with owner_conn.cursor() as cur:
             # cambridge bootstrap row is inserted by migration; trying to
             # insert it again must trip the UNIQUE constraint.
@@ -122,9 +118,7 @@ class TestCitiesTableShape:
         assert data_type == "text"
         assert is_nullable == "NO"
 
-    def test_bbox_is_polygon_4326_not_null(
-        self, owner_conn: psycopg.Connection[Any]
-    ) -> None:
+    def test_bbox_is_polygon_4326_not_null(self, owner_conn: psycopg.Connection[Any]) -> None:
         cols = _column_info(owner_conn, "cities")
         _data_type, is_nullable, _ = cols["bbox"]
         assert is_nullable == "NO"
@@ -148,9 +142,7 @@ class TestCitiesTableShape:
         gist = [d for d in defs if "using gist" in d.lower() and "bbox" in d.lower()]
         assert gist, f"No GIST index on cities.bbox. Found: {defs}"
 
-    def test_default_zoom_is_integer_not_null(
-        self, owner_conn: psycopg.Connection[Any]
-    ) -> None:
+    def test_default_zoom_is_integer_not_null(self, owner_conn: psycopg.Connection[Any]) -> None:
         cols = _column_info(owner_conn, "cities")
         data_type, is_nullable, _ = cols["default_zoom"]
         assert data_type == "integer"
@@ -206,9 +198,7 @@ class TestCambridgeBootstrap:
         assert default_zoom > 0
         assert timezone  # non-empty IANA name
 
-    def test_cambridge_bbox_is_valid_polygon(
-        self, owner_conn: psycopg.Connection[Any]
-    ) -> None:
+    def test_cambridge_bbox_is_valid_polygon(self, owner_conn: psycopg.Connection[Any]) -> None:
         with owner_conn.cursor() as cur:
             cur.execute(
                 """
@@ -247,7 +237,8 @@ class TestCitiesRoundTrip:
         assert row is not None
         _id, slug, bbox_wkt, default_zoom, timezone = row
         assert slug == "roundtrip-test-city"
-        assert bbox_wkt is not None and bbox_wkt.startswith("POLYGON")
+        assert bbox_wkt is not None
+        assert bbox_wkt.startswith("POLYGON")
         assert default_zoom == 10
         assert timezone == "UTC"
         owner_conn.rollback()  # leave bootstrap state alone for other tests

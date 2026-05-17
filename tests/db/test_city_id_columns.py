@@ -92,9 +92,7 @@ def _index_definitions(conn: psycopg.Connection[Any], table: str) -> list[str]:
 
 class TestCityIdColumn:
     @pytest.mark.parametrize("table", CITY_SCOPED_TABLES)
-    def test_city_id_column_exists(
-        self, owner_conn: psycopg.Connection[Any], table: str
-    ) -> None:
+    def test_city_id_column_exists(self, owner_conn: psycopg.Connection[Any], table: str) -> None:
         cols = _column_info(owner_conn, table)
         assert "city_id" in cols, f"{table} missing city_id column"
 
@@ -105,9 +103,7 @@ class TestCityIdColumn:
         assert data_type == "uuid"
 
     @pytest.mark.parametrize("table", CITY_SCOPED_TABLES)
-    def test_city_id_is_not_null(
-        self, owner_conn: psycopg.Connection[Any], table: str
-    ) -> None:
+    def test_city_id_is_not_null(self, owner_conn: psycopg.Connection[Any], table: str) -> None:
         cols = _column_info(owner_conn, table)
         _, is_nullable, _ = cols["city_id"]
         assert is_nullable == "NO", f"{table}.city_id must be NOT NULL"
@@ -160,9 +156,7 @@ class TestCityIdBackfill:
     """
 
     @pytest.mark.parametrize("table", CITY_SCOPED_TABLES)
-    def test_no_dangling_city_id(
-        self, owner_conn: psycopg.Connection[Any], table: str
-    ) -> None:
+    def test_no_dangling_city_id(self, owner_conn: psycopg.Connection[Any], table: str) -> None:
         with owner_conn.cursor() as cur:
             cur.execute(
                 f"""
@@ -234,9 +228,7 @@ class TestCityIdAddPreservesAppendOnly:
     """
 
     @pytest.mark.parametrize("table", ["scoring_runs", "segment_scores"])
-    def test_fk_constraint_exists(
-        self, owner_conn: psycopg.Connection[Any], table: str
-    ) -> None:
+    def test_fk_constraint_exists(self, owner_conn: psycopg.Connection[Any], table: str) -> None:
         fks = _foreign_keys(owner_conn, table)
         assert any(fk[0] == "city_id" and fk[1] == "cities" for fk in fks), (
             f"{table} city_id FK to cities not present"
