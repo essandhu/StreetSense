@@ -8,7 +8,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { currentCitySlug, tileBaseUrl } from "./api";
+import { useActiveCitySlug, tileBaseUrl } from "./api";
 
 const DEFAULT_LAYER = "public.road_segments_tile";
 
@@ -25,11 +25,12 @@ const buildTileUrl = (layer: string, citySlug: string): string =>
   `${tileBaseUrl()}/tiles/${layer}/{z}/{x}/{y}.pbf?city_slug=${encodeURIComponent(citySlug)}`;
 
 export const useTileSourceConfig = () => {
-  const citySlug = currentCitySlug();
+  // Phase 4b Task 4.3: slug comes from the activeCity slice via a
+  // selector hook. A `setActiveCity` dispatch re-renders this
+  // component, the new slug enters the query key, TanStack Query
+  // invalidates the previous entry, deck.gl swaps the source URL.
+  const citySlug = useActiveCitySlug();
   return useQuery<TileSourceConfig>({
-    // Include the city slug in the query key so Phase 4's city
-    // switcher (Task 4.3) naturally invalidates the cache without
-    // touching this hook again.
     queryKey: ["tile-source", DEFAULT_LAYER, citySlug],
     queryFn: () =>
       Promise.resolve({

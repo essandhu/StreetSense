@@ -21,8 +21,9 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { RunId } from "../domain";
+import { DEFAULT_CITY_SLUG } from "../state/activeCity";
 
-import { currentCitySlug, tileBaseUrl } from "./api";
+import { useActiveCitySlug, tileBaseUrl } from "./api";
 
 const LAYER = "public.road_segments_tile_delta";
 
@@ -38,24 +39,29 @@ export type DeltaTileSource = {
  * math stays testable without TanStack Query setup.
  *
  * Phase 4b (migration 0019): the delta tile function takes a required
- * ``city_slug``; ``deltaTileUrl`` accepts it as a third parameter
- * defaulted to :func:`currentCitySlug` so existing callers don't break.
+ * ``city_slug``; ``deltaTileUrl`` accepts it as a third parameter,
+ * defaulted to ``DEFAULT_CITY_SLUG`` so pure-function callers don't
+ * need a Redux store. React-tree callers should pass the value from
+ * :func:`useActiveCitySlug` explicitly.
  */
-export const deltaTileUrl = (runA: RunId, runB: RunId, citySlug?: string): string => {
+export const deltaTileUrl = (
+  runA: RunId,
+  runB: RunId,
+  citySlug: string = DEFAULT_CITY_SLUG,
+): string => {
   const base = `${tileBaseUrl()}/tiles/${LAYER}/{z}/{x}/{y}.pbf`;
   const params = new URLSearchParams();
   params.set("run_a", String(runA));
   params.set("run_b", String(runB));
-  params.set("city_slug", citySlug ?? currentCitySlug());
+  params.set("city_slug", citySlug);
   return `${base}?${params.toString()}`;
 };
 
 export const useDeltaTileSource = (runA: RunId | null, runB: RunId | null) => {
-  const citySlug = currentCitySlug();
+  // Phase 4b Task 4.3: slug from the activeCity slice.
+  const citySlug = useActiveCitySlug();
   const enabled = runA !== null && runB !== null && runA !== runB;
   return useQuery<DeltaTileSource | null>({
-    // Include citySlug in the key so Phase 4's city switcher
-    // (Task 4.3) re-keys this cache when the user changes city.
     queryKey: ["delta-tile-source", LAYER, citySlug, String(runA ?? ""), String(runB ?? "")],
     queryFn: () => {
       if (!enabled || runA === null || runB === null) return Promise.resolve(null);

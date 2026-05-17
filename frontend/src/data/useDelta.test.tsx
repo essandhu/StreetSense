@@ -12,12 +12,15 @@
  *     in one round-trip (the LargestChangesList virtualizes >200 rows and
  *     the histogram needs the full distribution).
  */
+import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode } from "react";
+import { Provider } from "react-redux";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunId, type DeltaResponse } from "../domain";
+import activeCity, { setActiveCity } from "../state/activeCity";
 import { useDelta } from "./useDelta";
 
 const RUN_A = RunId("11111111-1111-1111-1111-111111111111");
@@ -43,9 +46,20 @@ function _payload(runA: string, runB: string): DeltaResponse {
   } as unknown as DeltaResponse;
 }
 
-function _wrap(qc: QueryClient): ({ children }: { children: ReactNode }) => ReactNode {
+function _makeStore(initialSlug = "cambridge") {
+  const store = configureStore({ reducer: { activeCity } });
+  if (initialSlug !== "cambridge") store.dispatch(setActiveCity(initialSlug));
+  return store;
+}
+
+function _wrap(
+  qc: QueryClient,
+  store = _makeStore(),
+): ({ children }: { children: ReactNode }) => ReactNode {
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </Provider>
   );
 }
 
@@ -88,7 +102,7 @@ describe("useDelta — success path", () => {
     renderHook(() => useDelta(RUN_A, RUN_B), { wrapper: _wrap(qc) });
     await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(1));
     const url = String(fetchSpy.mock.calls[0]?.[0] ?? "");
-    expect(url).toContain(`/runs/${RUN_A}/delta/${RUN_B}`);
+    expect(url).toContain(`/api/cities/cambridge/runs/${RUN_A}/delta/${RUN_B}`);
     expect(url).toMatch(/[?&]page_size=1000\b/);
   });
 });
@@ -154,5 +168,31 @@ describe("useDelta — caching", () => {
     const b = renderHook(() => useDelta(RUN_B, RUN_A), { wrapper });
     await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("switching cities re-fetches and hits the new slug's path", async () => {
+    // Task 4.3 invariant: a city switch invalidates the previous
+    // city's delta cache. Delta is doubly city-scoped here — both
+    // runs belong to a specific city's scoring history, so reusing
+    // cambridge's delta after switching to phoenix would be a
+    // correctness bug.
+    const qc = _newClient();
+    const store = _makeStore("cambridge");
+    const wrapper = _wrap(qc, store);
+
+    const { result } = renderHook(() => useDelta(RUN_A, RUN_B), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0] ?? "")).toContain(
+      "/api/cities/cambridge/runs/",
+    );
+
+    act(() => {
+      store.dispatch(setActiveCity("phoenix"));
+    });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(String(fetchSpy.mock.calls[1]?.[0] ?? "")).toContain(
+      "/api/cities/phoenix/runs/",
+    );
   });
 });

@@ -5,6 +5,7 @@ import { Provider } from "react-redux";
 
 import { RunId, type RunListResponse } from "../../domain";
 import { runsQueryKey } from "../../data/useRuns";
+import activeCityReducer from "../../state/activeCity";
 import deltaReducer, { type DeltaState } from "../../state/delta";
 
 import { RunPicker } from "./RunPicker";
@@ -46,15 +47,16 @@ const _wrap = ({ runs, initialDelta }: DecoratorArgs) => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  qc.setQueryData(runsQueryKey(), runs ?? _SAMPLE_RUNS);
+  qc.setQueryData(runsQueryKey("cambridge"), runs ?? _SAMPLE_RUNS);
   const store = configureStore({
-    reducer: { delta: deltaReducer },
+    reducer: { delta: deltaReducer, activeCity: activeCityReducer },
     preloadedState: {
       delta: {
         mode: initialDelta?.mode ?? "delta",
         runA: initialDelta?.runA ?? null,
         runB: initialDelta?.runB ?? null,
       },
+      activeCity: { slug: "cambridge" },
     },
   });
   return (Story: React.ComponentType) => (

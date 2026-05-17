@@ -15,6 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunId, type DeltaResponse, type SegmentDelta } from "../../domain";
 import { deltaQueryKey } from "../../data/useDelta";
+import activeCityReducer from "../../state/activeCity";
 import deltaReducer, { type DeltaState } from "../../state/delta";
 import selectedSegmentReducer from "../../state/selectedSegment";
 
@@ -74,16 +75,25 @@ function _renderWithStores({
 }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   if (payload && initialDelta.runA && initialDelta.runB) {
-    qc.setQueryData(deltaQueryKey(initialDelta.runA, initialDelta.runB), payload);
+    // Phase 4b Task 4.3: query key carries the active city slug.
+    qc.setQueryData(
+      deltaQueryKey("cambridge", initialDelta.runA, initialDelta.runB),
+      payload,
+    );
   }
   const store = configureStore({
-    reducer: { delta: deltaReducer, selectedSegment: selectedSegmentReducer },
+    reducer: {
+      delta: deltaReducer,
+      selectedSegment: selectedSegmentReducer,
+      activeCity: activeCityReducer,
+    },
     preloadedState: {
       delta: {
         mode: initialDelta.mode ?? "delta",
         runA: initialDelta.runA ?? null,
         runB: initialDelta.runB ?? null,
       },
+      activeCity: { slug: "cambridge" },
     },
   });
   const wrapper = ({ children }: { children: ReactNode }) => (

@@ -5,6 +5,7 @@ import { Provider } from "react-redux";
 
 import { deltaQueryKey } from "../../data/useDelta";
 import { RunId, SegmentId, type DeltaResponse, type SegmentDelta } from "../../domain";
+import activeCityReducer from "../../state/activeCity";
 import deltaReducer, { type DeltaState } from "../../state/delta";
 import selectedSegmentReducer from "../../state/selectedSegment";
 
@@ -81,16 +82,21 @@ const _wrap = ({ rows, highlightSegmentId = null }: WrapArgs) => {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: Infinity } },
   });
-  qc.setQueryData(deltaQueryKey(RUN_A, RUN_B), _payload(rows));
+  qc.setQueryData(deltaQueryKey("cambridge", RUN_A, RUN_B), _payload(rows));
   const initialDelta: DeltaState = { mode: "delta", runA: RUN_A, runB: RUN_B };
   const store = configureStore({
-    reducer: { delta: deltaReducer, selectedSegment: selectedSegmentReducer },
+    reducer: {
+      delta: deltaReducer,
+      selectedSegment: selectedSegmentReducer,
+      activeCity: activeCityReducer,
+    },
     preloadedState: {
       delta: initialDelta,
       selectedSegment: {
         segmentId: highlightSegmentId ? SegmentId(highlightSegmentId) : null,
         isPanelOpen: highlightSegmentId !== null,
       },
+      activeCity: { slug: "cambridge" },
     },
   });
   return (Story: React.ComponentType) => (

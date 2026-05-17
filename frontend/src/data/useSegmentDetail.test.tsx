@@ -1,19 +1,26 @@
 /**
- * Tests for `useSegmentDetail` (Task 3.6.9).
+ * Tests for `useSegmentDetail` (Phase 3 Task 3.6.9, refactored for
+ * Phase 4b Task 4.3 to be city-keyed).
  *
  * Uses TanStack Query's testing utilities + a fetch shim — no MSW
  * dependency. Covers:
- *   - Caches per (segmentId, hour) pair so two scrubber positions in
- *     the same UTC hour share a single network call.
+ *   - Hits `/api/cities/{slug}/segments/{id}?t=...` with the slug
+ *     from the activeCity slice.
+ *   - Caches per (citySlug, segmentId, hour) tuple so two scrubber
+ *     positions in the same UTC hour share a single network call.
+ *   - Switching cities re-fetches (different cache key, different URL).
  *   - Returns the typed response shape.
  *   - Disabled when segmentId is null.
  */
+import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode } from "react";
+import { Provider } from "react-redux";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SegmentId, type SegmentDetail } from "../domain";
+import activeCity, { setActiveCity } from "../state/activeCity";
 import { useSegmentDetail } from "./useSegmentDetail";
 
 const _SEGMENT_ID = SegmentId("12345678-1234-5678-1234-567812345678");
@@ -41,9 +48,20 @@ function _payload(id: string): SegmentDetail {
   } as SegmentDetail;
 }
 
-function _wrap(qc: QueryClient): ({ children }: { children: ReactNode }) => ReactNode {
+function _makeStore(initialSlug = "cambridge") {
+  const store = configureStore({ reducer: { activeCity } });
+  if (initialSlug !== "cambridge") store.dispatch(setActiveCity(initialSlug));
+  return store;
+}
+
+function _wrap(
+  qc: QueryClient,
+  store = _makeStore(),
+): ({ children }: { children: ReactNode }) => ReactNode {
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </Provider>
   );
 }
 
@@ -67,6 +85,16 @@ afterEach(() => {
 });
 
 describe("useSegmentDetail", () => {
+  it("hits the city-scoped path /api/cities/{slug}/segments/{id}", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { result } = renderHook(() => useSegmentDetail(_SEGMENT_ID, null), {
+      wrapper: _wrap(qc),
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const url = String(fetchSpy.mock.calls[0]?.[0] ?? "");
+    expect(url).toMatch(/\/api\/cities\/cambridge\/segments\/[0-9a-f-]+/);
+  });
+
   it("returns the typed response when segmentId is set", async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const { result } = renderHook(() => useSegmentDetail(_SEGMENT_ID, null), {
@@ -107,5 +135,32 @@ describe("useSegmentDetail", () => {
     const c = renderHook(() => useSegmentDetail(_SEGMENT_ID, t3), { wrapper });
     await waitFor(() => expect(c.result.current.isSuccess).toBe(true));
     expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it("switching cities re-fetches and does NOT return prior-city data", async () => {
+    // The plan acceptance for Task 4.3: "switching cities does not
+    // return data from the previously active city." The slug is part
+    // of the query key, so dispatch + waitFor on a second fetch is
+    // the precise expression of that invariant.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const store = _makeStore("cambridge");
+    const wrapper = _wrap(qc, store);
+
+    const { result } = renderHook(() => useSegmentDetail(_SEGMENT_ID, null), {
+      wrapper,
+    });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0] ?? "")).toContain(
+      "/api/cities/cambridge/segments/",
+    );
+
+    act(() => {
+      store.dispatch(setActiveCity("phoenix"));
+    });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(String(fetchSpy.mock.calls[1]?.[0] ?? "")).toContain(
+      "/api/cities/phoenix/segments/",
+    );
   });
 });

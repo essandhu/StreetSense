@@ -14,19 +14,28 @@ import { Provider } from "react-redux";
 import { describe, expect, it } from "vitest";
 import type { ReactNode } from "react";
 
+import activeCityReducer, { setActiveCity } from "../state/activeCity";
 import scrubberReducer, { setHourOfDay, setDayOfYear } from "../state/scrubber";
 
 import { glareTileUrl, useGlareTileSource } from "./useGlareTileSource";
 
-const renderWithProviders = (initial?: { hourOfDay?: number; dayOfYear?: number }) => {
+const renderWithProviders = (initial?: {
+  hourOfDay?: number;
+  dayOfYear?: number;
+  citySlug?: string;
+}) => {
+  // Phase 4b Task 4.3: the hook now reads the active city slug from
+  // the activeCity slice, so the test store must include it. Tests
+  // that don't pass `citySlug` get the default cambridge.
   const store = configureStore({
-    reducer: { scrubber: scrubberReducer },
+    reducer: { scrubber: scrubberReducer, activeCity: activeCityReducer },
     preloadedState: initial
       ? {
           scrubber: {
             hourOfDay: initial.hourOfDay ?? 11,
             dayOfYear: initial.dayOfYear ?? 80,
           },
+          activeCity: { slug: initial.citySlug ?? "cambridge" },
         }
       : undefined,
   });
@@ -104,5 +113,18 @@ describe("useGlareTileSource", () => {
     });
     await waitFor(() => expect(result.current.data?.url).toMatch(/2025-06-21/));
     expect(result.current.data?.url).toMatch(/2025-06-21T11/);
+  });
+
+  it("rebinds to the new city slug on setActiveCity (Task 4.3)", async () => {
+    const { result, store } = renderWithProviders({ dayOfYear: 80, hourOfDay: 11 });
+    await waitFor(() =>
+      expect(result.current.data?.url).toMatch(/[?&]city_slug=cambridge/),
+    );
+    act(() => {
+      store.dispatch(setActiveCity("phoenix"));
+    });
+    await waitFor(() =>
+      expect(result.current.data?.url).toMatch(/[?&]city_slug=phoenix/),
+    );
   });
 });

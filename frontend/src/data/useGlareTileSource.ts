@@ -20,10 +20,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 
+import { DEFAULT_CITY_SLUG } from "../state/activeCity";
 import type { ScrubberState } from "../state/scrubber";
 import type { RootState } from "../state/store";
 
-import { currentCitySlug, tileBaseUrl } from "./api";
+import { useActiveCitySlug, tileBaseUrl } from "./api";
 
 const LAYER = "public.road_segments_tile_t";
 
@@ -59,15 +60,19 @@ const buildSnappedIso = (state: ScrubberState): string => {
  *
  * Phase 4b (migration 0019): the tile function takes a required
  * ``city_slug`` argument. ``glareTileUrl`` accepts it as a second
- * parameter (defaulting to :func:`currentCitySlug` so existing call
- * sites keep working).
+ * parameter, defaulting to ``DEFAULT_CITY_SLUG`` so pure-function
+ * callers (test fixtures, isolated benchmarks) don't need a Redux
+ * store. React-tree callers should pass the value from
+ * :func:`useActiveCitySlug` explicitly.
  */
-export const glareTileUrl = (state: ScrubberState, citySlug?: string): string => {
+export const glareTileUrl = (
+  state: ScrubberState,
+  citySlug: string = DEFAULT_CITY_SLUG,
+): string => {
   const iso = buildSnappedIso(state);
-  const slug = citySlug ?? currentCitySlug();
   const params = new URLSearchParams();
   params.set("t", iso);
-  params.set("city_slug", slug);
+  params.set("city_slug", citySlug);
   return `${tileBaseUrl()}/tiles/${LAYER}/{z}/{x}/{y}.pbf?${params.toString()}`;
 };
 
@@ -75,12 +80,12 @@ const scrubberSelector = (state: RootState): ScrubberState => state.scrubber;
 
 export const useGlareTileSource = () => {
   const scrubber = useSelector(scrubberSelector);
-  const citySlug = currentCitySlug();
+  // Phase 4b Task 4.3: slug from the activeCity slice. A
+  // setActiveCity dispatch re-keys this cache automatically.
+  const citySlug = useActiveCitySlug();
   const t = buildSnappedIso(scrubber);
 
   return useQuery<GlareTileSource>({
-    // Include citySlug in the key so Phase 4's city switcher
-    // (Task 4.3) re-keys this cache when the user changes city.
     queryKey: ["glare-tile-source", LAYER, citySlug, t],
     // The "fetch" is just URL construction — no network. TanStack Query
     // is here for cache + invalidation semantics; the work is in deck.gl

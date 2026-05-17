@@ -4,12 +4,15 @@
  * Lists every scoring run from `GET /runs`. Sourced by the RunPicker
  * dropdowns (Task 3.3) — never put this in Redux.
  */
+import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode } from "react";
+import { Provider } from "react-redux";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type RunListResponse } from "../domain";
+import activeCity, { setActiveCity } from "../state/activeCity";
 import { useRuns } from "./useRuns";
 
 function _runMeta(id: string, tsIso: string) {
@@ -31,9 +34,20 @@ const _PAYLOAD: RunListResponse = {
   ],
 } as RunListResponse;
 
-function _wrap(qc: QueryClient): ({ children }: { children: ReactNode }) => ReactNode {
+function _makeStore(initialSlug = "cambridge") {
+  const store = configureStore({ reducer: { activeCity } });
+  if (initialSlug !== "cambridge") store.dispatch(setActiveCity(initialSlug));
+  return store;
+}
+
+function _wrap(
+  qc: QueryClient,
+  store = _makeStore(),
+): ({ children }: { children: ReactNode }) => ReactNode {
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </Provider>
   );
 }
 
@@ -56,14 +70,14 @@ afterEach(() => {
 const _newClient = () => new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
 describe("useRuns", () => {
-  it("fetches /runs and returns the typed response", async () => {
+  it("fetches the city-scoped path /api/cities/{slug}/runs", async () => {
     const qc = _newClient();
     const { result } = renderHook(() => useRuns(), { wrapper: _wrap(qc) });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data?.runs).toHaveLength(2);
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     const url = String(fetchSpy.mock.calls[0]?.[0] ?? "");
-    expect(url).toMatch(/\/runs$/);
+    expect(url).toMatch(/\/api\/cities\/cambridge\/runs$/);
   });
 
   it("returns runs in the order the server provided", async () => {
@@ -74,7 +88,7 @@ describe("useRuns", () => {
     expect(result.current.data?.runs[1]?.scoring_run_timestamp).toBe("2026-05-01T12:00:00Z");
   });
 
-  it("two mounts share one fetch (caching keyed on the static list)", async () => {
+  it("two mounts under the same city share one fetch", async () => {
     const qc = _newClient();
     const wrapper = _wrap(qc);
     const a = renderHook(() => useRuns(), { wrapper });
@@ -83,5 +97,30 @@ describe("useRuns", () => {
     const b = renderHook(() => useRuns(), { wrapper });
     await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("switching cities re-fetches and hits the new slug's path", async () => {
+    // Task 4.3 invariant: a city switch invalidates the previous
+    // city's run list. Each city has its own scoring history; reusing
+    // cambridge's runs in the picker after switching to phoenix
+    // would be a correctness bug, not just a UX nit.
+    const qc = _newClient();
+    const store = _makeStore("cambridge");
+    const wrapper = _wrap(qc, store);
+
+    const { result } = renderHook(() => useRuns(), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(String(fetchSpy.mock.calls[0]?.[0] ?? "")).toContain(
+      "/api/cities/cambridge/runs",
+    );
+
+    act(() => {
+      store.dispatch(setActiveCity("phoenix"));
+    });
+    await waitFor(() => expect(fetchSpy).toHaveBeenCalledTimes(2));
+    expect(String(fetchSpy.mock.calls[1]?.[0] ?? "")).toContain(
+      "/api/cities/phoenix/runs",
+    );
   });
 });

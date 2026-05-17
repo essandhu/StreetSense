@@ -1,20 +1,35 @@
 /**
- * Tests for useDeltaTileSource (Task 3.7).
+ * Tests for useDeltaTileSource (Task 3.7, extended for Phase 4b
+ * Task 4.3 city-keyed query cache).
  */
+import { configureStore } from "@reduxjs/toolkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { type ReactNode } from "react";
+import { Provider } from "react-redux";
 import { describe, expect, it } from "vitest";
 
 import { RunId } from "../domain";
+import activeCity, { setActiveCity } from "../state/activeCity";
 import { deltaTileUrl, useDeltaTileSource } from "./useDeltaTileSource";
 
 const RUN_A = RunId("11111111-1111-1111-1111-111111111111");
 const RUN_B = RunId("22222222-2222-2222-2222-222222222222");
 
-const _wrap = (qc: QueryClient) => {
+function _makeStore(initialSlug = "cambridge") {
+  const store = configureStore({ reducer: { activeCity } });
+  if (initialSlug !== "cambridge") store.dispatch(setActiveCity(initialSlug));
+  return store;
+}
+
+const _wrap = (
+  qc: QueryClient,
+  store = _makeStore(),
+): (({ children }: { children: ReactNode }) => ReactNode) => {
   return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    <Provider store={store}>
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    </Provider>
   );
 };
 
@@ -85,5 +100,22 @@ describe("useDeltaTileSource", () => {
     const urlB = b.result.current.data?.url ?? "";
 
     expect(urlA).not.toBe(urlB);
+  });
+
+  it("rebinds to the new city slug on setActiveCity (Task 4.3)", async () => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const store = _makeStore("cambridge");
+    const wrapper = _wrap(qc, store);
+
+    const { result } = renderHook(() => useDeltaTileSource(RUN_A, RUN_B), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data?.url).toMatch(/[?&]city_slug=cambridge/);
+
+    act(() => {
+      store.dispatch(setActiveCity("phoenix"));
+    });
+    await waitFor(() =>
+      expect(result.current.data?.url).toMatch(/[?&]city_slug=phoenix/),
+    );
   });
 });

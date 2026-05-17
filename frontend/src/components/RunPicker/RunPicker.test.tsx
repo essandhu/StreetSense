@@ -14,6 +14,7 @@ import { Provider } from "react-redux";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { RunId, type RunListResponse } from "../../domain";
+import activeCityReducer from "../../state/activeCity";
 import deltaReducer, { type DeltaState } from "../../state/delta";
 
 import { RunPicker } from "./RunPicker";
@@ -64,7 +65,9 @@ afterEach(() => {
 function _renderWithStores(deltaInitial?: Partial<DeltaState>) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const store = configureStore({
-    reducer: { delta: deltaReducer },
+    // Phase 4b Task 4.3: useRuns reads the active city slug from
+    // the activeCity slice, so it must be wired into the store.
+    reducer: { delta: deltaReducer, activeCity: activeCityReducer },
     preloadedState: deltaInitial
       ? {
           delta: {
@@ -72,6 +75,7 @@ function _renderWithStores(deltaInitial?: Partial<DeltaState>) {
             runA: deltaInitial.runA ?? null,
             runB: deltaInitial.runB ?? null,
           },
+          activeCity: { slug: "cambridge" },
         }
       : undefined,
   });
