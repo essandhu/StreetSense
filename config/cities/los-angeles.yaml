@@ -1,0 +1,30 @@
+# Los Angeles, California — Phase 4b curated city (ADR 0010).
+#
+# Selected for: largest population + road network of the chosen set —
+# stresses the propagator at the upper end of the Phase 4 budget
+# envelope (~500k edges). Verifies multi-city schema does not regress
+# propagator perf at scale.
+
+slug: los-angeles
+name: los-angeles
+display_name: "Los Angeles, CA"
+default: false
+
+# Los Angeles city limits (approximate, contiguous portion — excludes
+# the Harbor Gateway / Pedro panhandle for bbox compactness) in WGS84.
+# Order: [min_lon, min_lat, max_lon, max_lat].
+bbox: [-118.67, 33.70, -118.16, 34.34]
+
+default_zoom: 10
+timezone: America/Los_Angeles
+
+# SoCal metro extract — the containing Geofabrik region.
+geofabrik_extract_url: https://download.geofabrik.de/north-america/us/california/socal-latest.osm.pbf
+
+local_cache_path: data/osm/socal-latest.osm.pbf
+
+notes: |
+  Propagator-scale stress test of the multi-city schema. Network is the
+  largest of the chosen five. Historical-correlation sub-score is
+  honestly-null until a state-level CA incident dataset is added
+  (post-launch).

@@ -1,0 +1,27 @@
+# Austin, Texas — Phase 4b curated city (ADR 0010).
+#
+# Selected for: active Waymo deployment + Tesla Robotaxi rollout in
+# progress as of late 2025; mix of dense central city + broad sub-urban
+# arterials; distinct sun geometry vs. the Massachusetts demo.
+
+slug: austin
+name: austin
+display_name: "Austin, TX"
+default: false
+
+# Austin city limits (approximate) in WGS84.
+# Order: [min_lon, min_lat, max_lon, max_lat].
+bbox: [-97.94, 30.10, -97.56, 30.52]
+
+default_zoom: 11
+timezone: America/Chicago
+
+# Texas state extract — the containing Geofabrik region.
+geofabrik_extract_url: https://download.geofabrik.de/north-america/us/texas-latest.osm.pbf
+
+local_cache_path: data/osm/texas-latest.osm.pbf
+
+notes: |
+  Mixed central-dense + broad-arterial geometry. Historical-correlation
+  sub-score is honestly-null until a state-level TX incident dataset is
+  added (post-launch).

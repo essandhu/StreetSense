@@ -1,0 +1,29 @@
+# San Francisco, California — Phase 4b curated city (ADR 0010).
+#
+# Selected for: Waymo's dense urban testbed (and Cruise's historical
+# presence); steepest junction-complexity of the chosen four (one-way
+# grids, hills, frequent T-intersections); heavy pedestrian / cyclist
+# load that puts perception under continuous stress.
+
+slug: san-francisco
+name: san-francisco
+display_name: "San Francisco, CA"
+default: false
+
+# San Francisco city limits (approximate, excluding the Farallon Islands
+# and Treasure Island) in WGS84.
+# Order: [min_lon, min_lat, max_lon, max_lat].
+bbox: [-122.52, 37.70, -122.35, 37.83]
+
+default_zoom: 12
+timezone: America/Los_Angeles
+
+# Northern California metro extract — the containing Geofabrik region.
+geofabrik_extract_url: https://download.geofabrik.de/north-america/us/california/norcal-latest.osm.pbf
+
+local_cache_path: data/osm/norcal-latest.osm.pbf
+
+notes: |
+  Densest junction-complexity of the chosen four. Historical-correlation
+  sub-score is honestly-null until a state-level CA incident dataset is
+  added (post-launch).

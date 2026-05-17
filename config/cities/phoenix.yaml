@@ -1,0 +1,30 @@
+# Phoenix, Arizona — Phase 4b curated city (ADR 0010).
+#
+# Selected for: longest-running US commercial AV deployment (Waymo One,
+# operating since 2020), highest sun-glare salience of any chosen city
+# (Sonoran Desert geometry, near-cloudless skies, wide east-west
+# arterials), strong OSM + Mapillary coverage.
+
+slug: phoenix
+name: phoenix
+display_name: "Phoenix, AZ"
+default: false
+
+# Phoenix city limits (approximate) in WGS84.
+# Order: [min_lon, min_lat, max_lon, max_lat].
+bbox: [-112.32, 33.29, -111.93, 33.92]
+
+default_zoom: 11
+timezone: America/Phoenix
+
+# Geofabrik publishes per-state extracts daily. Arizona is the
+# containing state; the ingestor clips to bbox at parse time.
+geofabrik_extract_url: https://download.geofabrik.de/north-america/us/arizona-latest.osm.pbf
+
+local_cache_path: data/osm/arizona-latest.osm.pbf
+
+notes: |
+  Highest-salience city for the glare sub-score. America/Phoenix does
+  not observe DST — relevant for the time-scrubber's solar-noon seed.
+  Historical-correlation sub-score is honestly-null until a state-level
+  AZ incident dataset is added (post-launch).

@@ -1,15 +1,23 @@
-# Cambridge, Massachusetts — Phase 1 default city.
+# Cambridge, Massachusetts — Phase 1 default city, grandfathered into the
+# Phase 4b shipped set alongside the four curated additions (ADR 0010).
 #
-# City is configuration, never code. To add a new city, drop a sibling YAML
-# next to this one and set `default: false`. The `__schema__.yaml` next to
-# this file describes the required shape.
+# Cities are configuration, never code. To add a new city, drop a sibling
+# YAML next to this one and set `default: false`. The `__schema__.yaml`
+# next to this file describes the required shape (Phase 4b extends it
+# with `slug`, `default_zoom`, `timezone`, optional `notes`).
 
+slug: cambridge
 name: cambridge
+display_name: "Cambridge, MA"
 default: true
 
 # Approximate Cambridge city limits in WGS84 (lon, lat).
 # Order: [min_lon, min_lat, max_lon, max_lat].
 bbox: [-71.16, 42.35, -71.07, 42.41]
+
+# Phase 4b — initial map zoom level + IANA timezone for the time scrubber.
+default_zoom: 12
+timezone: America/New_York
 
 # Geofabrik publishes Massachusetts-wide extracts daily. We download the state
 # extract and clip to bbox at parse time (see ingestion/osm/).
@@ -19,5 +27,9 @@ geofabrik_extract_url: https://download.geofabrik.de/north-america/us/massachuse
 # root. The ingestion runner creates this directory if missing.
 local_cache_path: data/osm/massachusetts-latest.osm.pbf
 
-# Display label used by future multi-city UIs (Phase 5+). Phase 1 ignores.
-display_name: "Cambridge, MA"
+notes: |
+  Phase 1-4 demo city. Retained in Phase 4b's shipped set as a
+  grandfathered city alongside the four curated additions (see
+  ADR 0010). MassDOT IMPACT (ADR 0007) provides historical incidents
+  for cambridge only; the other four cities ship with the
+  historical-correlation sub-score honestly-null.

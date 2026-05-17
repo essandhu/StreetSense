@@ -1,32 +1,51 @@
 # JSON Schema (in YAML) for city config files in this directory.
 # Misconfigured cities fail loudly at load time — see ingestion/config.py
 # (Phase 1.4) for the validator using this schema.
+#
+# Phase 4b extension (ADR 0010): `slug`, `default_zoom`, and `timezone`
+# are now required. `notes` is a new optional field. The existing
+# `name` field continues to mirror `slug` for back-compat with the
+# Phase 1-4 loader; new YAMLs MUST set both.
 
 $schema: "https://json-schema.org/draft/2020-12/schema"
 title: StreetSense City Configuration
 type: object
 required:
+  - slug
   - name
   - bbox
+  - default_zoom
+  - timezone
   - geofabrik_extract_url
   - local_cache_path
 additionalProperties: false
 
 properties:
+  slug:
+    type: string
+    pattern: "^[a-z][a-z0-9_-]*$"
+    description: |
+      Phase 4b: canonical lowercase identifier. Used as the cities table
+      slug, the API path segment (`/api/cities/{slug}/...`), and the
+      YAML filename stem. By convention equals `name` until back-compat
+      callers stop reading `name`.
+
   name:
     type: string
     pattern: "^[a-z][a-z0-9_-]*$"
-    description: Lowercase slug identifying the city. Used as a directory and table key.
+    description: |
+      Phase 1 slug field. Phase 4b: kept for back-compat; equals `slug`.
 
   default:
     type: boolean
     description: |
       Marks this city as the default loaded by `make seed`. Exactly one
-      city file in the directory should set `default: true`.
+      city file in the directory should set `default: true` (Phase 4b:
+      cambridge keeps it; the four curated additions default to false).
 
   display_name:
     type: string
-    description: Human-readable name for UIs. Phase 1 does not consume this.
+    description: Human-readable name (e.g., "Phoenix, AZ"). Used by the UI.
 
   bbox:
     type: array
@@ -37,6 +56,23 @@ properties:
     description: |
       Bounding box in WGS84 as [min_lon, min_lat, max_lon, max_lat].
       The ingestion pipeline clips to this bbox at parse time.
+
+  default_zoom:
+    type: integer
+    minimum: 1
+    maximum: 22
+    description: |
+      Phase 4b: initial MapLibre zoom level when this city becomes
+      active. Range matches MapLibre's valid zoom levels.
+
+  timezone:
+    type: string
+    minLength: 1
+    description: |
+      Phase 4b: IANA timezone name (e.g., "America/Phoenix"). Used by
+      the time scrubber to seed at local solar noon on city switch.
+      Validated against zoneinfo.available_timezones() in the Pydantic
+      City model.
 
   geofabrik_extract_url:
     type: string
@@ -53,3 +89,9 @@ properties:
       Path (relative to repo root) where the downloaded PBF is cached.
       Re-downloads only if the file is missing or the upstream Last-Modified
       header has changed.
+
+  notes:
+    type: string
+    description: |
+      Phase 4b: optional free-text notes (rationale, caveats, links).
+      Surfaced in /api/cities responses and in the demo doc.
