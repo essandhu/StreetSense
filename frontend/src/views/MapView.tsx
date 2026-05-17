@@ -8,7 +8,8 @@
  * Redux and fires `useSegmentDetail`.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSelector } from "react-redux";
 import type maplibregl from "maplibre-gl";
 
 import { LayerOverlay } from "../components/Map/LayerOverlay";
@@ -16,15 +17,35 @@ import { LayerToggle } from "../components/Map/LayerToggle";
 import { Map } from "../components/Map/Map";
 import { Scrubber } from "../components/Scrubber/Scrubber";
 import { SegmentDetailPanel } from "../components/SegmentDetailPanel";
+import { findCityBySlug, useCities } from "../data/useCities";
 import { useTileSourceConfig } from "../data/useTileSourceConfig";
 import { SegmentId } from "../domain";
 import { useAppDispatch } from "../state/hooks";
 import { openSegment } from "../state/selectedSegment";
+import type { RootState } from "../state/store";
+
+const _selectActiveCitySlug = (s: RootState) => s.activeCity.slug;
 
 export const MapView = () => {
   const tileSource = useTileSourceConfig();
+  const cities = useCities();
+  const activeCitySlug = useSelector(_selectActiveCitySlug);
   const [map, setMap] = useState<maplibregl.Map | null>(null);
   const dispatch = useAppDispatch();
+
+  // Phase 4b Task 4.6: feed the Map the active city's bbox so it
+  // calls fitBounds on switch. `null` while the cities registry is
+  // loading or the active slug isn't in the registry — the Map's
+  // effect no-ops on null.
+  const fitBoundsTo = useMemo<[[number, number], [number, number]] | null>(() => {
+    const city = findCityBySlug(cities.data, activeCitySlug);
+    if (!city) return null;
+    const [minLon, minLat, maxLon, maxLat] = city.bbox;
+    return [
+      [minLon, minLat],
+      [maxLon, maxLat],
+    ];
+  }, [cities.data, activeCitySlug]);
 
   const onSegmentClick = useCallback(
     (id: string) => {
@@ -59,6 +80,7 @@ export const MapView = () => {
         tileSourceUrl={tileSource.data.url}
         onReady={setMap}
         onSegmentClick={onSegmentClick}
+        fitBoundsTo={fitBoundsTo}
       />
       <LayerOverlay map={map} />
       <LayerToggle />
