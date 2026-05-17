@@ -42,6 +42,11 @@ RESULTS_DIR = REPO_ROOT / "benchmarks" / "api" / "results" / "phase-2"
 
 DEFAULT_LAYER = "public.road_segments_tile_t"
 DEFAULT_REFERENCE_DAY = "2025-06-21"  # Same default as `make scoring-run`.
+# Phase 4b (migration 0019) made city_slug a required tile-function arg.
+# The benchmark exercises Cambridge by default — matches the
+# pre-Phase-4b single-city baseline and lets the budget comparison
+# stay apples-to-apples.
+DEFAULT_CITY_SLUG = "cambridge"
 
 
 def lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:
@@ -69,11 +74,18 @@ def hourly_samples(reference_day: str) -> list[str]:
 
 
 async def _fetch_tile(
-    client: httpx.AsyncClient, base_url: str, layer: str, z: int, x: int, y: int, t: str
+    client: httpx.AsyncClient,
+    base_url: str,
+    layer: str,
+    z: int,
+    x: int,
+    y: int,
+    t: str,
+    city_slug: str,
 ) -> float:
     url = f"{base_url}/tiles/{layer}/{z}/{x}/{y}.pbf"
     t0 = time.perf_counter()
-    resp = await client.get(url, params={"t": t}, timeout=10.0)
+    resp = await client.get(url, params={"t": t, "city_slug": city_slug}, timeout=10.0)
     elapsed = time.perf_counter() - t0
     resp.raise_for_status()
     return elapsed
@@ -85,6 +97,7 @@ async def _run_phase(
     tiles: list[tuple[int, int, int]],
     samples: list[str],
     concurrency: int,
+    city_slug: str,
 ) -> list[float]:
     sem = asyncio.Semaphore(concurrency)
     # Combine each tile with each hourly sample — the front-end's actual
@@ -96,7 +109,7 @@ async def _run_phase(
         async def _one(req: tuple[int, int, int, str]) -> float:
             z, x, y, t = req
             async with sem:
-                return await _fetch_tile(client, base_url, layer, z, x, y, t)
+                return await _fetch_tile(client, base_url, layer, z, x, y, t, city_slug)
 
         return list(await asyncio.gather(*(_one(r) for r in requests)))
 
@@ -129,18 +142,20 @@ async def benchmark(
     zoom: int,
     reference_day: str,
     concurrency: int,
+    city_slug: str,
 ) -> dict[str, object]:
     tiles = tiles_in_bbox(bbox, zoom)
     samples = hourly_samples(reference_day)
     if not tiles:
         raise SystemExit(f"no tiles for bbox={bbox} zoom={zoom}")
 
-    cold = await _run_phase(base_url, layer, tiles, samples, concurrency)
-    warm = await _run_phase(base_url, layer, tiles, samples, concurrency)
+    cold = await _run_phase(base_url, layer, tiles, samples, concurrency, city_slug)
+    warm = await _run_phase(base_url, layer, tiles, samples, concurrency, city_slug)
     return {
         "timestamp": datetime.now(UTC).isoformat(),
         "base_url": base_url,
         "layer": layer,
+        "city_slug": city_slug,
         "bbox": list(bbox),
         "zoom": zoom,
         "reference_day": reference_day,
@@ -166,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--zoom", type=int, default=14)
     parser.add_argument("--reference-day", default=DEFAULT_REFERENCE_DAY)
+    parser.add_argument("--city-slug", default=DEFAULT_CITY_SLUG)
     parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--budget-warm-p99-ms", type=float, default=200.0)
     parser.add_argument("--budget-cold-p99-ms", type=float, default=800.0)
@@ -180,7 +196,15 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     result = asyncio.run(
-        benchmark(args.base_url, args.layer, bbox, args.zoom, args.reference_day, args.concurrency)
+        benchmark(
+            args.base_url,
+            args.layer,
+            bbox,
+            args.zoom,
+            args.reference_day,
+            args.concurrency,
+            args.city_slug,
+        )
     )
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)

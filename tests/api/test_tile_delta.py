@@ -345,9 +345,11 @@ class TestTileDeltaRowsCarryDecomposedDeltas:
         run_a, run_b, _shared = seed_delta_runs
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
+            # Phase 4b (migration 0019): positional order is
+            # (z, x, y, run_a, run_b, city_slug, t).
             cur.execute(
-                f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             colnames = [d.name for d in cur.description] if cur.description else []
 
@@ -383,8 +385,8 @@ class TestTileDeltaRowsCarryDecomposedDeltas:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             colnames = [d.name for d in cur.description] if cur.description else []
             rows = cur.fetchall()
@@ -416,8 +418,8 @@ class TestTileDeltaRowsCarryDecomposedDeltas:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT id FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT id FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             ids = {r[0] for r in cur.fetchall()}
         assert shared in ids
@@ -435,8 +437,8 @@ class TestTileDeltaRowsCarryDecomposedDeltas:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT count(*) FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT count(*) FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             n = cur.fetchone()
         assert n is not None
@@ -453,8 +455,8 @@ class TestTileDeltaRowsCarryDecomposedDeltas:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT id FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, NULL::timestamptz)",
-                (14, x, y, run_a, run_b),
+                f"SELECT id FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s, NULL::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge"),
             )
             ids = {r[0] for r in cur.fetchall()}
         assert ids == {shared}
@@ -475,8 +477,8 @@ class TestTileDeltaBytesWrapper:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -496,8 +498,8 @@ class TestTileDeltaBytesWrapper:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s, NULL::timestamptz)",
-                (14, x, y, uuid4(), uuid4()),
+                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s, %s, NULL::timestamptz)",
+                (14, x, y, uuid4(), uuid4(), "cambridge"),
             )
             row = cur.fetchone()
         assert row is not None
@@ -525,8 +527,8 @@ class TestTileDeltaGrants:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with app_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -540,8 +542,8 @@ class TestTileDeltaGrants:
         x, y = _lonlat_to_tile(_FIXTURE_LON, _FIXTURE_LAT, 14)
         with app_conn.cursor() as cur:
             cur.execute(
-                f"SELECT count(*) FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s::timestamptz)",
-                (14, x, y, run_a, run_b, _RUN_B_TS.isoformat()),
+                f"SELECT count(*) FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", _RUN_B_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -576,6 +578,8 @@ class TestPgTileservDeltaHttpEndpoint:
             params={
                 "run_a": str(run_a),
                 "run_b": str(run_b),
+                # Phase 4b: city_slug is required (migration 0019).
+                "city_slug": "cambridge",
                 "t": _RUN_B_TS.isoformat(),
             },
             timeout=5.0,

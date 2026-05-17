@@ -50,7 +50,11 @@ async def _sample_segment_ids(base_url: str, limit: int) -> list[UUID]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         try:
             # Use a single low-zoom tile that covers Cambridge.
-            r = await client.get(f"{base_url}/tiles/public.road_segments_tile_t/9/151/187.pbf")
+            # Phase 4b (migration 0019): tile function requires city_slug.
+            r = await client.get(
+                f"{base_url}/tiles/public.road_segments_tile_t/9/151/187.pbf",
+                params={"city_slug": "cambridge"},
+            )
             r.raise_for_status()
             # We can't parse MVT here without protobuf; fall back to
             # explicit --segment-ids in callers.

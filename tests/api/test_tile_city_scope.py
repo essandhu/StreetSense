@@ -119,24 +119,19 @@ def seeded_cambridge_run(
     owner_conn: psycopg.Connection[Any],
     database_url: str,
     cambridge_city_id: Any,
-    phoenix_city_id: Any,
 ) -> UUID:
-    """One Cambridge segment + one Phoenix segment + a cambridge-only run.
+    """One Cambridge segment + a glare scoring run on it.
 
-    The Phoenix segment sits *inside* the Cambridge tile bbox on purpose:
-    when the tile function is given ``city_slug='cambridge'`` it must
-    filter the Phoenix row out by ``city_id``, not by geometry. That's
-    the city-scoping invariant the migration delivers; geometry overlap
-    is irrelevant to it.
+    Cambridge-only. The cross-city overlap fixture
+    (:func:`seeded_cambridge_and_phoenix_overlap`) adds a Phoenix
+    segment at the same coords when a test needs to assert the city
+    filter is by ``city_id``, not by geometry. Keeping the two fixtures
+    separate means the "phoenix slug returns empty" test isn't muddied
+    by an out-of-its-bbox Phoenix segment.
 
     Returns the cambridge segment id.
     """
     geom_cambridge = LineString([(-71.110, 42.370), (-71.100, 42.370)])
-    # Same coordinates so the segment is unambiguously inside the same
-    # tile envelope; differs only in city_id.
-    geom_phoenix_in_cambridge_bbox = LineString(
-        [(-71.108, 42.371), (-71.102, 42.371)]
-    )
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
         cur.execute(
@@ -150,17 +145,61 @@ def seeded_cambridge_run(
         row = cur.fetchone()
         assert row is not None
         seg_id: UUID = row[0]
+    owner_conn.commit()
 
-        # Phoenix segment that *would* be visible under the cambridge
-        # tile envelope if there were no city filter. The fixture exists
-        # to prove the filter actually filters.
+    ScoringRun(
+        config=ScoringRunConfig(
+            temporal_samples=TEMPORAL_SAMPLES,
+            osm_snapshot_date=date(2026, 5, 13),
+            city_id=cambridge_city_id,
+        ),
+        scorers=[GlareScorer()],
+        database_url=database_url,
+    ).execute()
+    return seg_id
+
+
+@pytest.fixture
+def seeded_cambridge_and_phoenix_overlap(
+    owner_conn: psycopg.Connection[Any],
+    database_url: str,
+    cambridge_city_id: Any,
+    phoenix_city_id: Any,
+) -> UUID:
+    """Cambridge segment + Phoenix segment sharing the same tile envelope.
+
+    The Phoenix segment sits *inside* the Cambridge tile bbox on
+    purpose: it lets the cambridge-only-filter test assert that the
+    city filter operates on ``city_id`` rather than on geometry. Without
+    the overlap, the test would be satisfied by the trivial geometry
+    filter and would not catch a regression where city_id was dropped
+    from the WHERE clause.
+
+    Returns the cambridge segment id (the one a city_slug='cambridge'
+    request should return).
+    """
+    geom_cambridge = LineString([(-71.110, 42.370), (-71.100, 42.370)])
+    geom_phoenix_in_cambridge_bbox = LineString([(-71.108, 42.371), (-71.102, 42.371)])
+    with owner_conn.cursor() as cur:
+        cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
+        cur.execute(
+            """
+            INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
+            RETURNING id
+            """,
+            (888_021, wkb.dumps(geom_cambridge), '{"highway": "primary"}', cambridge_city_id),
+        )
+        row = cur.fetchone()
+        assert row is not None
+        cambridge_seg_id: UUID = row[0]
         cur.execute(
             """
             INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
             VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
             """,
             (
-                888_012,
+                888_022,
                 wkb.dumps(geom_phoenix_in_cambridge_bbox),
                 '{"highway": "primary"}',
                 phoenix_city_id,
@@ -177,7 +216,7 @@ def seeded_cambridge_run(
         scorers=[GlareScorer()],
         database_url=database_url,
     ).execute()
-    return seg_id
+    return cambridge_seg_id
 
 
 # ---------------------------------------------------------------------------
@@ -236,38 +275,41 @@ class TestTileFunctionSignatures:
 class TestTileTCityScope:
     def test_cambridge_slug_returns_only_cambridge_rows(
         self,
-        seeded_cambridge_run: UUID,
+        seeded_cambridge_and_phoenix_overlap: UUID,
         owner_conn: psycopg.Connection[Any],
     ) -> None:
         x, y = _lonlat_to_tile(_FIX_LON, _FIX_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT id FROM {TILE_FN_T_ROWS}(%s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, _RUN_TS.isoformat(), "cambridge"),
+                f"SELECT id FROM {TILE_FN_T_ROWS}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "cambridge", _RUN_TS.isoformat()),
             )
             ids = {r[0] for r in cur.fetchall()}
         # Only the cambridge-tagged segment must come back — the phoenix
         # segment lives at coords inside the same envelope and would
-        # otherwise pass the geometry filter.
-        assert ids == {seeded_cambridge_run}, (
+        # otherwise pass the geometry filter. This is what proves the
+        # city filter is by city_id, not by bbox.
+        assert ids == {seeded_cambridge_and_phoenix_overlap}, (
             f"expected only the cambridge segment; got {ids}"
         )
 
     def test_phoenix_slug_returns_empty(
         self,
         seeded_cambridge_run: UUID,
+        phoenix_city_id: Any,
         owner_conn: psycopg.Connection[Any],
     ) -> None:
-        """The phoenix segment exists but has no scoring run yet — and
-        in any case lives outside the Cambridge tile. Asking for
-        ``phoenix`` over the Cambridge bbox must return zero rows
-        without erroring."""
+        """phoenix exists in the cities table but has no segments seeded
+        anywhere. Requesting tiles for ``city_slug='phoenix'`` over a
+        Cambridge XYZ — where every segment is city_id=cambridge — must
+        return zero rows without erroring."""
         del seeded_cambridge_run
+        del phoenix_city_id  # makes the fixture explicit; row exists for the SQL
         x, y = _lonlat_to_tile(_FIX_LON, _FIX_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT count(*) FROM {TILE_FN_T_ROWS}(%s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, _RUN_TS.isoformat(), "phoenix"),
+                f"SELECT count(*) FROM {TILE_FN_T_ROWS}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "phoenix", _RUN_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -285,8 +327,8 @@ class TestTileTCityScope:
         x, y = _lonlat_to_tile(_FIX_LON, _FIX_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_T_BYTES}(%s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, _RUN_TS.isoformat(), "does-not-exist"),
+                f"SELECT {TILE_FN_T_BYTES}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "does-not-exist", _RUN_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -308,8 +350,8 @@ class TestTileTCityScope:
         x, y = _lonlat_to_tile(_FIX_LON, _FIX_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_T_BYTES}(%s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, _RUN_TS.isoformat(), "cambridge"),
+                f"SELECT {TILE_FN_T_BYTES}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "cambridge", _RUN_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -323,9 +365,7 @@ class TestTileTCityScope:
 # ---------------------------------------------------------------------------
 
 
-def _insert_delta_run(
-    cur: psycopg.Cursor[Any], ts: datetime, *, city_id: Any
-) -> UUID:
+def _insert_delta_run(cur: psycopg.Cursor[Any], ts: datetime, *, city_id: Any) -> UUID:
     cur.execute(
         """
         INSERT INTO scoring_runs (
@@ -523,14 +563,11 @@ class TestTileDeltaCityScope:
         ts = datetime(2026, 5, 15, 12, 0, tzinfo=UTC).isoformat()
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT id FROM {TILE_FN_DELTA_ROWS}("
-                "%s, %s, %s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, run_a, run_b, ts, "cambridge"),
+                f"SELECT id FROM {TILE_FN_DELTA_ROWS}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", ts),
             )
             ids = {r[0] for r in cur.fetchall()}
-        assert ids == {cambridge_seg}, (
-            f"expected only the cambridge segment; got {ids}"
-        )
+        assert ids == {cambridge_seg}, f"expected only the cambridge segment; got {ids}"
 
     def test_unknown_slug_returns_empty_mvt_not_500(
         self,
@@ -542,9 +579,8 @@ class TestTileDeltaCityScope:
         ts = datetime(2026, 5, 15, 12, 0, tzinfo=UTC).isoformat()
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_DELTA_BYTES}("
-                "%s, %s, %s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, run_a, run_b, ts, "does-not-exist"),
+                f"SELECT {TILE_FN_DELTA_BYTES}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "does-not-exist", ts),
             )
             row = cur.fetchone()
         assert row is not None
@@ -561,9 +597,8 @@ class TestTileDeltaCityScope:
         ts = datetime(2026, 5, 15, 12, 0, tzinfo=UTC).isoformat()
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_DELTA_BYTES}("
-                "%s, %s, %s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, run_a, run_b, ts, "cambridge"),
+                f"SELECT {TILE_FN_DELTA_BYTES}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", ts),
             )
             row = cur.fetchone()
         assert row is not None
@@ -591,8 +626,8 @@ class TestAppRoleCanExecuteCityScopedSignatures:
         x, y = _lonlat_to_tile(_FIX_LON, _FIX_LAT, 14)
         with app_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_T_BYTES}(%s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, _RUN_TS.isoformat(), "cambridge"),
+                f"SELECT {TILE_FN_T_BYTES}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "cambridge", _RUN_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None
@@ -607,9 +642,8 @@ class TestAppRoleCanExecuteCityScopedSignatures:
         ts = datetime(2026, 5, 15, 12, 0, tzinfo=UTC).isoformat()
         with app_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_DELTA_BYTES}("
-                "%s, %s, %s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, run_a, run_b, ts, "cambridge"),
+                f"SELECT {TILE_FN_DELTA_BYTES}(%s, %s, %s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, run_a, run_b, "cambridge", ts),
             )
             row = cur.fetchone()
         assert row is not None
@@ -631,9 +665,8 @@ class TestUnknownSlugDefensive:
         x, y = _lonlat_to_tile(_FIX_LON, _FIX_LAT, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT count(*) FROM {TILE_FN_T_ROWS}("
-                "%s, %s, %s, %s::timestamptz, %s)",
-                (14, x, y, _RUN_TS.isoformat(), str(uuid4())),
+                f"SELECT count(*) FROM {TILE_FN_T_ROWS}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, str(uuid4()), _RUN_TS.isoformat()),
             )
             row = cur.fetchone()
         assert row is not None

@@ -109,9 +109,11 @@ def test_rows_function_returns_lane_marking_quality(
 
     x, y = _lonlat_to_tile(-71.105, 42.370, 14)
     with owner_conn.cursor() as cur:
+        # Phase 4b (migration 0019): tile function takes a required
+        # `city_slug` argument; positional order is (z, x, y, city_slug, t).
         cur.execute(
-            f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s::timestamptz)",
-            (14, x, y, "2025-06-21T16:00:00Z"),
+            f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s::timestamptz)",
+            (14, x, y, "cambridge", "2025-06-21T16:00:00Z"),
         )
         colnames = [d.name for d in cur.description] if cur.description else []
         rows = cur.fetchall()
@@ -149,8 +151,8 @@ def test_bytes_function_still_returns_non_empty_mvt(
     x, y = _lonlat_to_tile(-71.105, 42.370, 14)
     with owner_conn.cursor() as cur:
         cur.execute(
-            "SELECT public.road_segments_tile_t(%s, %s, %s, %s::timestamptz)",
-            (14, x, y, "2025-06-21T16:00:00Z"),
+            "SELECT public.road_segments_tile_t(%s, %s, %s, %s, %s::timestamptz)",
+            (14, x, y, "cambridge", "2025-06-21T16:00:00Z"),
         )
         row = cur.fetchone()
     assert row is not None

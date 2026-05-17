@@ -117,9 +117,11 @@ class TestTileRowsCarryGlareAndStubFlags:
         x, y = _lonlat_to_tile(-71.105, 42.370, 14)
         t = "2025-06-21T16:00:00Z"
         with owner_conn.cursor() as cur:
+            # Phase 4b: city_slug is required; positional order is
+            # (z, x, y, city_slug, t).
             cur.execute(
-                f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s::timestamptz)",
-                (14, x, y, t),
+                f"SELECT * FROM {TILE_FN_ROWS}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "cambridge", t),
             )
             colnames = [d.name for d in cur.description] if cur.description else []
             rows = cur.fetchall()
@@ -152,8 +154,8 @@ class TestTileRowsCarryGlareAndStubFlags:
         x, y = _lonlat_to_tile(-71.105, 42.370, 14)
         with owner_conn.cursor() as cur:
             cur.execute(
-                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s::timestamptz)",
-                (14, x, y, "2025-06-21T16:00:00Z"),
+                f"SELECT {TILE_FN_BYTES}(%s, %s, %s, %s, %s::timestamptz)",
+                (14, x, y, "cambridge", "2025-06-21T16:00:00Z"),
             )
             row = cur.fetchone()
         assert row is not None
@@ -180,6 +182,11 @@ class TestPgTileservHttpEndpoint:
             pytest.skip("pg_tileserv not reachable at " + self.BASE_URL)
         x, y = _lonlat_to_tile(-71.105, 42.370, 14)
         url = f"{self.BASE_URL}/tiles/{TILE_FN_BYTES}/{14}/{x}/{y}.pbf"
-        resp = httpx.get(url, params={"t": "2025-06-21T16:00:00Z"}, timeout=5.0)
+        resp = httpx.get(
+            url,
+            # Phase 4b: city_slug is required (migration 0019).
+            params={"t": "2025-06-21T16:00:00Z", "city_slug": "cambridge"},
+            timeout=5.0,
+        )
         assert resp.status_code == 200, resp.text
         assert len(resp.content) > 0
