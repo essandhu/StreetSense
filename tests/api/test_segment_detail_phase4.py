@@ -71,6 +71,7 @@ def segment_id(
 def _seed_phase4_row(
     owner_conn: psycopg.Connection[Any],
     segment_id: str,
+    city_id: Any,
     *,
     composite: float,
     uplift: float,
@@ -82,13 +83,13 @@ def _seed_phase4_row(
             """
             INSERT INTO scoring_runs (
                 scoring_run_timestamp, perception_model_version, osm_snapshot_date,
-                imagery_capture_window, propagation_algorithm_version
+                imagery_capture_window, propagation_algorithm_version, city_id
             ) VALUES (
                 now(), 'lane-marking-standin-deadbeef', '2026-05-13',
-                '[2025-06-01,2025-09-01)'::daterange, %s
+                '[2025-06-01,2025-09-01)'::daterange, %s, %s
             ) RETURNING id, scoring_run_timestamp
             """,
-            (algorithm,),
+            (algorithm, city_id),
         )
         row = cur.fetchone()
         assert row is not None
@@ -104,7 +105,8 @@ def _seed_phase4_row(
                 is_stub_junction_complexity, is_stub_historical,
                 scoring_run_id, scoring_run_timestamp,
                 perception_model_version, osm_snapshot_date,
-                imagery_capture_window, propagation_algorithm_version
+                imagery_capture_window, propagation_algorithm_version,
+                city_id
             ) VALUES (
                 %s, %s, %s,
                 0.55, 0.30, 0.50, 0.20,
@@ -112,10 +114,11 @@ def _seed_phase4_row(
                 false, false, false, false,
                 %s, %s,
                 'lane-marking-standin-deadbeef', '2026-05-13',
-                '[2025-06-01,2025-09-01)'::daterange, %s
+                '[2025-06-01,2025-09-01)'::daterange, %s,
+                %s
             )
             """,
-            (segment_id, composite, uplift, run_id, run_ts, algorithm),
+            (segment_id, composite, uplift, run_id, run_ts, algorithm, city_id),
         )
     owner_conn.commit()
 
@@ -123,8 +126,9 @@ def _seed_phase4_row(
 def test_segment_detail_carries_phase4_fields(
     segment_id: str,
     owner_conn: psycopg.Connection[Any],
+    cambridge_city_id: Any,
 ) -> None:
-    _seed_phase4_row(owner_conn, segment_id, composite=0.65, uplift=0.15)
+    _seed_phase4_row(owner_conn, segment_id, cambridge_city_id, composite=0.65, uplift=0.15)
 
     with TestClient(create_app()) as client:
         response = client.get(f"/segments/{segment_id}")
@@ -145,12 +149,14 @@ def test_segment_detail_carries_phase4_fields(
 def test_segment_detail_sentinel_propagation_algorithm_is_none(
     segment_id: str,
     owner_conn: psycopg.Connection[Any],
+    cambridge_city_id: Any,
 ) -> None:
     """Pre-Phase-4 rows persist ``propagation_algorithm_version='none-phase-2'``;
     the API surfaces ``propagation_algorithm: None`` rather than a fake label."""
     _seed_phase4_row(
         owner_conn,
         segment_id,
+        cambridge_city_id,
         composite=0.42,
         uplift=0.0,
         algorithm="none-phase-2",
@@ -183,8 +189,9 @@ def test_segment_detail_falls_back_when_no_score(
 def test_t_query_param_resolves_phase4_row(
     segment_id: str,
     owner_conn: psycopg.Connection[Any],
+    cambridge_city_id: Any,
 ) -> None:
-    _seed_phase4_row(owner_conn, segment_id, composite=0.65, uplift=0.20)
+    _seed_phase4_row(owner_conn, segment_id, cambridge_city_id, composite=0.65, uplift=0.20)
     t = datetime.now(UTC).isoformat()
     with TestClient(create_app()) as client:
         response = client.get(f"/segments/{segment_id}", params={"t": t})

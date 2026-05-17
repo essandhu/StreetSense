@@ -111,10 +111,15 @@ class ScoringRunConfig:
     literal) to ``tuple[date, date]`` in Phase 3 so callers compute the
     real ``(min, max)`` from ``segment_imagery``. The persistence layer
     converts to the PostgreSQL ``daterange`` string at insertion.
+
+    Phase 4b: ``city_id`` is required. It scopes the segment query to a
+    single city and tags every ``scoring_runs`` + ``segment_scores`` row
+    so Phase 5 delta queries can group by city natively.
     """
 
     temporal_samples: tuple[datetime, ...]
     osm_snapshot_date: date
+    city_id: UUID
     perception_model_version: str = PHASE_2_PERCEPTION_MODEL_VERSION_SENTINEL
     imagery_capture_window: tuple[date, date] = PHASE_2_IMAGERY_WINDOW_SENTINEL
     propagation_algorithm_version: str = PHASE_2_PROPAGATION_SENTINEL
@@ -173,7 +178,8 @@ INSERT INTO scoring_runs (
     osm_snapshot_date,
     imagery_capture_window,
     propagation_algorithm_version,
-    notes
+    notes,
+    city_id
 )
 VALUES (
     %(id)s,
@@ -182,7 +188,8 @@ VALUES (
     %(osm_snapshot_date)s,
     %(imagery_capture_window)s::daterange,
     %(propagation_algorithm_version)s,
-    %(notes)s
+    %(notes)s,
+    %(city_id)s
 )
 """
 
@@ -205,7 +212,8 @@ INSERT INTO segment_scores (
     perception_model_version,
     osm_snapshot_date,
     imagery_capture_window,
-    propagation_algorithm_version
+    propagation_algorithm_version,
+    city_id
 )
 VALUES (
     %(segment_id)s,
@@ -225,7 +233,8 @@ VALUES (
     %(perception_model_version)s,
     %(osm_snapshot_date)s,
     %(imagery_capture_window)s::daterange,
-    %(propagation_algorithm_version)s
+    %(propagation_algorithm_version)s,
+    %(city_id)s
 )
 """
 
@@ -239,6 +248,7 @@ SELECT
     ST_Y(ST_Centroid(geometry))   AS centroid_lat,
     ST_X(ST_Centroid(geometry))   AS centroid_lon
 FROM road_segments
+WHERE city_id = %(city_id)s
 """
 
 
@@ -259,10 +269,11 @@ def _bearing_deg(start_lat: float, start_lon: float, end_lat: float, end_lon: fl
 
 def load_scoring_segments(
     conn: psycopg.Connection[tuple[object, ...]],
+    city_id: UUID,
 ) -> Iterator[ScoringSegment]:
-    """Stream every ``road_segments`` row as a ``ScoringSegment``."""
+    """Stream every ``road_segments`` row for the given city as a ``ScoringSegment``."""
     with conn.cursor() as cur:
-        cur.execute(_SELECT_SEGMENTS_SQL)
+        cur.execute(_SELECT_SEGMENTS_SQL, {"city_id": city_id})
         for row in cur:
             seg_id = UUID(str(row[0])) if not isinstance(row[0], UUID) else row[0]
             s_lat = float(row[1])  # type: ignore[arg-type]
@@ -336,12 +347,13 @@ class ScoringRun:
                             self._config.propagation_algorithm_version
                         ),
                         "notes": self._config.notes,
+                        "city_id": self._config.city_id,
                     },
                 )
             conn.commit()
 
             batch: list[dict[str, object]] = []
-            for segment in load_scoring_segments(conn):
+            for segment in load_scoring_segments(conn, city_id=self._config.city_id):
                 segments_processed += 1
                 # Batched scorer fan-out per segment: ask each scorer for
                 # all temporal_samples at once when it offers
@@ -418,6 +430,7 @@ class ScoringRun:
             "osm_snapshot_date": self._config.osm_snapshot_date,
             "imagery_capture_window": self._config.imagery_capture_window_daterange,
             "propagation_algorithm_version": self._config.propagation_algorithm_version,
+            "city_id": self._config.city_id,
             # Phase 4 columns: the Phase 2/3 streaming path writes
             # ``propagation_uplift = 0.0`` (no propagator wired). The
             # Phase 4 path (scoring.phase4_run) overrides both

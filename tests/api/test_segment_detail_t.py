@@ -29,18 +29,20 @@ TEMPORAL_SAMPLES = tuple(datetime(2025, 6, 21, h, 0, tzinfo=UTC) for h in range(
 
 
 @pytest.fixture
-def seeded_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
+def seeded_run(
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
+) -> UUID:
     """Seed one east-west segment, run scoring for 24 hourly samples, return seg id."""
     geom = LineString([(-71.110, 42.370), (-71.090, 42.370)])
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
         cur.execute(
             """
-            INSERT INTO road_segments (osm_way_id, geometry, attrs)
-            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb)
+            INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
             RETURNING id
             """,
-            (777_001, wkb.dumps(geom), '{"highway": "primary"}'),
+            (777_001, wkb.dumps(geom), '{"highway": "primary"}', cambridge_city_id),
         )
         row = cur.fetchone()
         assert row is not None
@@ -51,6 +53,7 @@ def seeded_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
         config=ScoringRunConfig(
             temporal_samples=TEMPORAL_SAMPLES,
             osm_snapshot_date=date(2026, 5, 13),
+            city_id=cambridge_city_id,
         ),
         scorers=[GlareScorer()],
         database_url=database_url,

@@ -61,6 +61,7 @@ SELECT
         )
     ) AS end_bearing
 FROM road_segments
+WHERE city_id = %(city_id)s
 """
 
 
@@ -102,6 +103,7 @@ def _angle_between_bearings(a: float, b: float) -> float:
 
 def build_topology_index(
     conn: psycopg.Connection[Any],
+    city_id: UUID,
 ) -> dict[UUID, SegmentTopology]:
     """Eagerly construct a ``{segment_id: SegmentTopology}`` map.
 
@@ -109,10 +111,13 @@ def build_topology_index(
     endpoint keys and lane/class metadata; a second pass groups by
     endpoint key to compute leg counts, min merge angles, and
     neighbor lane/class tuples per junction.
+
+    Phase 4b: ``city_id`` is required and filters the topology pass so
+    junctions stay city-scoped.
     """
     raw: list[_RawSegmentRow] = []
     with conn.cursor() as cur:
-        cur.execute(_LOAD_TOPOLOGY_SQL)
+        cur.execute(_LOAD_TOPOLOGY_SQL, {"city_id": city_id})
         for row in cur.fetchall():
             seg_id = UUID(str(row[0])) if not isinstance(row[0], UUID) else row[0]
             start_bearing = float(row[5]) if row[5] is not None else 0.0
@@ -182,6 +187,7 @@ def _junction_endpoint(
 
 def make_topology_loader(
     conn: psycopg.Connection[Any],
+    city_id: UUID,
 ):  # type: ignore[no-untyped-def]
     """Return a ``TopologyLoader`` callable wired to the connection.
 
@@ -190,8 +196,10 @@ def make_topology_loader(
     SegmentTopology with default values is returned for unknown
     segment ids (the scorer raises rather than producing a bogus
     score otherwise).
+
+    Phase 4b: ``city_id`` is required and scopes the topology to one city.
     """
-    index = build_topology_index(conn)
+    index = build_topology_index(conn, city_id=city_id)
 
     def _load(segment_id: UUID) -> SegmentTopology:
         topology = index.get(segment_id)
@@ -226,6 +234,7 @@ SELECT
     incident_at,
     severity
 FROM incidents
+WHERE city_id = %(city_id)s
 """
 
 
@@ -252,6 +261,7 @@ def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> flo
 
 def make_incident_loader(
     conn: psycopg.Connection[Any],
+    city_id: UUID,
 ):  # type: ignore[no-untyped-def]
     """Return an ``IncidentLoader`` callable wired to the connection.
 
@@ -261,10 +271,15 @@ def make_incident_loader(
     scan is ~130M ops total — under 2 s in CPython at this size. If
     the dataset grows past 100k incidents, swap this for a per-call
     PostGIS ``ST_DWithin`` query.
+
+    Phase 4b: ``city_id`` is required and filters incidents to the
+    given city. Cities without incident data (everything except
+    cambridge at Phase 4b ship) get an empty index — the historical
+    scorer surfaces this as honestly-null per ADR 0010.
     """
     incidents: list[_IncidentMemo] = []
     with conn.cursor() as cur:
-        cur.execute(_LOAD_INCIDENTS_SQL)
+        cur.execute(_LOAD_INCIDENTS_SQL, {"city_id": city_id})
         for row in cur.fetchall():
             inc_id = UUID(str(row[0])) if not isinstance(row[0], UUID) else row[0]
             try:

@@ -64,9 +64,7 @@ def cmd_seed(city: str) -> int:
     database_url = get_database_url()
     city_id = get_city_id_by_slug(database_url, config.slug)
 
-    log.info(
-        "seed.start", city=config.slug, city_id=str(city_id), bbox=list(config.bbox)
-    )
+    log.info("seed.start", city=config.slug, city_id=str(city_id), bbox=list(config.bbox))
 
     source = GeofabrikOSMSource(url=config.geofabrik_extract_url)
     cache_path = config.resolved_cache_path
@@ -113,9 +111,7 @@ def cmd_imagery(city: str, *, max_segments: int | None = None) -> int:
     database_url = get_database_url()
     city_id = get_city_id_by_slug(database_url, config.slug)
 
-    log.info(
-        "imagery.start", city=config.slug, city_id=str(city_id), max_segments=max_segments
-    )
+    log.info("imagery.start", city=config.slug, city_id=str(city_id), max_segments=max_segments)
 
     t0 = time.perf_counter()
     job_config = (

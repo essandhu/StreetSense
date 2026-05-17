@@ -64,7 +64,7 @@ def _reset_tables(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 @pytest.fixture
-def three_segments(owner_conn: psycopg.Connection[Any]) -> list[UUID]:
+def three_segments(owner_conn: psycopg.Connection[Any], cambridge_city_id: Any) -> list[UUID]:
     """Three short east-west segments in central Cambridge."""
     geoms = [
         LineString([(-71.106, 42.371), (-71.104, 42.371)]),
@@ -76,11 +76,11 @@ def three_segments(owner_conn: psycopg.Connection[Any]) -> list[UUID]:
         for i, geom in enumerate(geoms):
             cur.execute(
                 """
-                INSERT INTO road_segments (osm_way_id, geometry, attrs)
-                VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), '{}'::jsonb)
+                INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+                VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), '{}'::jsonb, %s)
                 RETURNING id
                 """,
-                (888_000 + i, wkb.dumps(geom)),
+                (888_000 + i, wkb.dumps(geom), cambridge_city_id),
             )
             row = cur.fetchone()
             assert row is not None
@@ -105,10 +105,12 @@ def _config(
     *,
     perception_model_version: str,
     imagery_capture_window: tuple[date, date],
+    city_id: Any,
 ) -> ScoringRunConfig:
     return ScoringRunConfig(
         temporal_samples=_samples_4(),
         osm_snapshot_date=date(2026, 5, 14),
+        city_id=city_id,
         perception_model_version=perception_model_version,
         imagery_capture_window=imagery_capture_window,
     )
@@ -120,6 +122,7 @@ def test_writes_12_rows_glare_and_lane_real(
     three_segments: list[UUID],
     session: ort.InferenceSession,
     all_fixture_image_bytes: list[tuple[str, bytes]],
+    cambridge_city_id: Any,
 ) -> None:
     del three_segments  # consumed via _reset_tables / population fixture
     perception_model_version = "lane-marking-standin-8a1627c46d58"
@@ -128,6 +131,7 @@ def test_writes_12_rows_glare_and_lane_real(
     config = _config(
         perception_model_version=perception_model_version,
         imagery_capture_window=imagery_window,
+        city_id=cambridge_city_id,
     )
     perception = PerceptionScorer(
         session=session,
@@ -187,6 +191,7 @@ def test_stub_fallback_when_zero_imagery_for_segment(
     owner_conn: psycopg.Connection[Any],
     three_segments: list[UUID],
     session: ort.InferenceSession,
+    cambridge_city_id: Any,
 ) -> None:
     """A segment with zero imagery yields a stub lane_marking row."""
     del three_segments
@@ -194,6 +199,7 @@ def test_stub_fallback_when_zero_imagery_for_segment(
     config = _config(
         perception_model_version="lane-marking-standin-8a1627c46d58",
         imagery_capture_window=(date(2025, 6, 1), date(2025, 8, 31)),
+        city_id=cambridge_city_id,
     )
     # Loader returns no imagery for any segment.
     perception = PerceptionScorer(
@@ -232,6 +238,7 @@ def test_propagation_sentinel_is_retained(
     three_segments: list[UUID],
     session: ort.InferenceSession,
     all_fixture_image_bytes: list[tuple[str, bytes]],
+    cambridge_city_id: Any,
 ) -> None:
     """Regression guard: a refactor must not accidentally drop the sentinel."""
     del three_segments
@@ -239,6 +246,7 @@ def test_propagation_sentinel_is_retained(
     config = _config(
         perception_model_version="lane-marking-standin-8a1627c46d58",
         imagery_capture_window=(date(2025, 6, 1), date(2025, 8, 31)),
+        city_id=cambridge_city_id,
     )
     perception = PerceptionScorer(
         session=session,

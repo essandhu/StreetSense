@@ -92,10 +92,11 @@ def seeded_database(database_url: str, cambridge_city_id: Any) -> str:
     return database_url
 
 
-def _run_with_glare(seeded_database: str) -> ScoringRunConfig:
+def _run_with_glare(seeded_database: str, city_id: Any) -> ScoringRunConfig:
     return ScoringRunConfig(
         temporal_samples=TEMPORAL_SAMPLES,
         osm_snapshot_date=FIXTURE_METADATA.osm_snapshot_date,
+        city_id=city_id,
     )
 
 
@@ -104,8 +105,9 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         run = ScoringRun(
             config=config,
             scorers=[GlareScorer()],
@@ -127,8 +129,9 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         ScoringRun(
             config=config,
             scorers=[GlareScorer()],
@@ -157,8 +160,9 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         ScoringRun(
             config=config,
             scorers=[GlareScorer()],
@@ -190,8 +194,9 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         ScoringRun(
             config=config,
             scorers=[GlareScorer()],
@@ -214,11 +219,12 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
         """Each row's ``scoring_run_timestamp`` is the *temporal sample*
         that produced it — not the wallclock at run-time. The tile API
         snaps `t` to this column."""
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         ScoringRun(
             config=config,
             scorers=[GlareScorer()],
@@ -235,11 +241,12 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
         """Sanity: the east-west segment shows distinct glare values at
         the four temporal samples (night vs morning vs noon vs evening)
         — proving the run actually invokes the scorer per-timestamp."""
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         ScoringRun(
             config=config,
             scorers=[GlareScorer()],
@@ -272,8 +279,9 @@ class TestEndToEndScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _run_with_glare(seeded_database)
+        config = _run_with_glare(seeded_database, cambridge_city_id)
         ScoringRun(
             config=config,
             scorers=[GlareScorer()],

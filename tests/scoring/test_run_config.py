@@ -15,6 +15,7 @@ documented marker" rule.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from uuid import uuid4
 
 import pytest
 
@@ -26,6 +27,11 @@ from scoring.run import (
     default_24_hourly_samples,
 )
 
+# A synthetic city_id is fine for the unit-level validation tests; the
+# DB-level FK constraint isn't exercised here. Use a fresh UUID per
+# test invocation via the function below so tests don't share state.
+_FAKE_CITY_ID = uuid4()
+
 
 def _samples() -> tuple[datetime, ...]:
     return default_24_hourly_samples(date(2025, 6, 21))
@@ -34,7 +40,9 @@ def _samples() -> tuple[datetime, ...]:
 def test_default_uses_phase_2_sentinel() -> None:
     """The default `ScoringRunConfig` writes the documented Phase-2 sentinel
     — not an empty string and not `None`."""
-    config = ScoringRunConfig(temporal_samples=_samples(), osm_snapshot_date=date(2026, 5, 13))
+    config = ScoringRunConfig(
+        temporal_samples=_samples(), osm_snapshot_date=date(2026, 5, 13), city_id=_FAKE_CITY_ID
+    )
     assert config.propagation_algorithm_version == PHASE_2_PROPAGATION_SENTINEL
     assert config.propagation_algorithm_version  # non-empty truthy guarantee
     assert config.perception_model_version == PHASE_2_PERCEPTION_MODEL_VERSION_SENTINEL
@@ -50,6 +58,7 @@ def test_empty_propagation_version_rejected() -> None:
         ScoringRunConfig(
             temporal_samples=_samples(),
             osm_snapshot_date=date(2026, 5, 13),
+            city_id=_FAKE_CITY_ID,
             propagation_algorithm_version="",
         )
 
@@ -59,6 +68,7 @@ def test_empty_perception_model_version_rejected() -> None:
         ScoringRunConfig(
             temporal_samples=_samples(),
             osm_snapshot_date=date(2026, 5, 13),
+            city_id=_FAKE_CITY_ID,
             perception_model_version="",
         )
 
@@ -74,13 +84,16 @@ def test_inverted_imagery_capture_window_rejected() -> None:
         ScoringRunConfig(
             temporal_samples=_samples(),
             osm_snapshot_date=date(2026, 5, 13),
+            city_id=_FAKE_CITY_ID,
             imagery_capture_window=(date(2026, 5, 14), date(2026, 5, 13)),
         )
 
 
 def test_empty_temporal_samples_rejected() -> None:
     with pytest.raises(ValueError, match="temporal_samples"):
-        ScoringRunConfig(temporal_samples=(), osm_snapshot_date=date(2026, 5, 13))
+        ScoringRunConfig(
+            temporal_samples=(), osm_snapshot_date=date(2026, 5, 13), city_id=_FAKE_CITY_ID
+        )
 
 
 def test_naive_datetime_in_temporal_samples_rejected() -> None:
@@ -89,6 +102,7 @@ def test_naive_datetime_in_temporal_samples_rejected() -> None:
         ScoringRunConfig(
             temporal_samples=(naive,),
             osm_snapshot_date=date(2026, 5, 13),
+            city_id=_FAKE_CITY_ID,
         )
 
 

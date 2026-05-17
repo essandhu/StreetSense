@@ -37,6 +37,7 @@ import structlog
 from minio import Minio
 
 from ingestion.config import get_database_url, load_city
+from ingestion.seed_cities import get_city_id_by_slug
 from scoring.environmental.glare import GlareScorer
 from scoring.historical.scorer import HistoricalCorrelationScorer
 from scoring.junction.scorer import JunctionComplexityScorer
@@ -206,10 +207,12 @@ def cmd_run(city: str, reference_day: date) -> int:
     _configure_logging()
     config = load_city(city)
     database_url = get_database_url()
+    city_id = get_city_id_by_slug(database_url, config.slug)
 
     log.info(
         "scoring_cli.start",
-        city=config.name,
+        city=config.slug,
+        city_id=str(city_id),
         reference_day=reference_day.isoformat(),
     )
 
@@ -238,8 +241,8 @@ def cmd_run(city: str, reference_day: date) -> int:
     run_at = datetime(reference_day.year, reference_day.month, reference_day.day, 12, tzinfo=UTC)
 
     with psycopg.connect(_psycopg_dsn(database_url)) as conn:
-        topology_loader = make_topology_loader(conn)
-        incident_loader = make_incident_loader(conn)
+        topology_loader = make_topology_loader(conn, city_id=city_id)
+        incident_loader = make_incident_loader(conn, city_id=city_id)
 
     junction_scorer = JunctionComplexityScorer(topology_loader=topology_loader)
     historical_scorer = HistoricalCorrelationScorer(
@@ -250,10 +253,11 @@ def cmd_run(city: str, reference_day: date) -> int:
     run_config = ScoringRunConfig(
         temporal_samples=samples,
         osm_snapshot_date=osm_snapshot_date,
+        city_id=city_id,
         perception_model_version=perception_model_version,
         imagery_capture_window=imagery_window,
         propagation_algorithm_version=propagation_algorithm_version,
-        notes=f"city={config.name}; reference_day={reference_day.isoformat()}",
+        notes=f"city={config.slug}; reference_day={reference_day.isoformat()}",
     )
     summary = execute_phase4_scoring_run(
         config=run_config,

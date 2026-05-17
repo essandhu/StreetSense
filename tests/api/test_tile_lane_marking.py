@@ -54,18 +54,20 @@ def _reset(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 @pytest.fixture
-def seeded_segment_with_scoring_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
+def seeded_segment_with_scoring_run(
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
+) -> UUID:
     """Insert one Cambridge segment + run a scoring run with glare + perception."""
     geom = LineString([(-71.110, 42.370), (-71.100, 42.370)])
     with owner_conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO road_segments (osm_way_id, geometry, attrs)
+            INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
             VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326),
-                    '{"highway": "primary"}'::jsonb)
+                    '{"highway": "primary"}'::jsonb, %s)
             RETURNING id
             """,
-            (901_001, wkb.dumps(geom)),
+            (901_001, wkb.dumps(geom), cambridge_city_id),
         )
         row = cur.fetchone()
         assert row is not None
@@ -83,6 +85,7 @@ def seeded_segment_with_scoring_run(owner_conn: psycopg.Connection[Any], databas
     config = ScoringRunConfig(
         temporal_samples=(datetime(2025, 6, 21, 16, 0, tzinfo=UTC),),
         osm_snapshot_date=date(2025, 6, 21),
+        city_id=cambridge_city_id,
         perception_model_version="lane-marking-standin-deadbeef",
         imagery_capture_window=(date(2025, 6, 1), date(2025, 8, 31)),
     )

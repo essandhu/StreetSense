@@ -53,17 +53,19 @@ def _lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:
 
 
 @pytest.fixture
-def seeded_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
+def seeded_run(
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
+) -> UUID:
     geom = LineString([(-71.110, 42.370), (-71.100, 42.370)])  # east-west, inside Cambridge
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
         cur.execute(
             """
-            INSERT INTO road_segments (osm_way_id, geometry, attrs)
-            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb)
+            INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
             RETURNING id
             """,
-            (888_001, wkb.dumps(geom), '{"highway": "primary"}'),
+            (888_001, wkb.dumps(geom), '{"highway": "primary"}', cambridge_city_id),
         )
         row = cur.fetchone()
         assert row is not None
@@ -74,6 +76,7 @@ def seeded_run(owner_conn: psycopg.Connection[Any], database_url: str) -> UUID:
         config=ScoringRunConfig(
             temporal_samples=TEMPORAL_SAMPLES,
             osm_snapshot_date=date(2026, 5, 13),
+            city_id=cambridge_city_id,
         ),
         scorers=[GlareScorer()],
         database_url=database_url,

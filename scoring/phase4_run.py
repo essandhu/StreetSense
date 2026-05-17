@@ -90,6 +90,7 @@ WITH endpoints AS (
         ST_StartPoint(geometry) AS start_pt,
         ST_EndPoint(geometry)   AS end_pt
     FROM road_segments
+    WHERE city_id = %(city_id)s
 ),
 canonical_endpoints AS (
     -- Canonicalize each endpoint by snapping to a 6-decimal-degree grid
@@ -159,7 +160,9 @@ class Phase4ScoringRunSummary(ScoringRunSummary):
         return dict(self.composite_weights_pairs)
 
 
-def _load_adjacency(conn: psycopg.Connection[Any], index: _SegmentIndex) -> list[list[int]]:
+def _load_adjacency(
+    conn: psycopg.Connection[Any], index: _SegmentIndex, city_id: UUID
+) -> list[list[int]]:
     """Build per-segment adjacency list from shared endpoints.
 
     Returns a list of lists where ``adjacency[i]`` is the set of
@@ -170,7 +173,7 @@ def _load_adjacency(conn: psycopg.Connection[Any], index: _SegmentIndex) -> list
     n = len(index)
     adjacency: list[list[int]] = [[] for _ in range(n)]
     with conn.cursor() as cur:
-        cur.execute(_LOAD_ADJACENCY_SQL)
+        cur.execute(_LOAD_ADJACENCY_SQL, {"city_id": city_id})
         for src_id, dst_id in cur.fetchall():
             src_uuid = UUID(str(src_id)) if not isinstance(src_id, UUID) else src_id
             dst_uuid = UUID(str(dst_id)) if not isinstance(dst_id, UUID) else dst_id
@@ -332,11 +335,12 @@ def execute_phase4_scoring_run(
                     "imagery_capture_window": config.imagery_capture_window_daterange,
                     "propagation_algorithm_version": config.propagation_algorithm_version,
                     "notes": config.notes,
+                    "city_id": config.city_id,
                 },
             )
         conn.commit()
 
-        segments = list(load_scoring_segments(conn))
+        segments = list(load_scoring_segments(conn, city_id=config.city_id))
         segments_processed = len(segments)
         index = _SegmentIndex.from_segments(segments)
 
@@ -350,7 +354,7 @@ def execute_phase4_scoring_run(
         )
 
         t_adj = time.perf_counter()
-        adjacency = _load_adjacency(conn, index)
+        adjacency = _load_adjacency(conn, index, city_id=config.city_id)
         adjacency_secs = time.perf_counter() - t_adj
         edge_count = sum(len(n) for n in adjacency)
         log.info(
@@ -442,6 +446,7 @@ def execute_phase4_scoring_run(
                     "osm_snapshot_date": config.osm_snapshot_date,
                     "imagery_capture_window": config.imagery_capture_window_daterange,
                     "propagation_algorithm_version": config.propagation_algorithm_version,
+                    "city_id": config.city_id,
                     "composite_risk": breakdown.composite_risk,
                     "propagation_uplift": breakdown.propagation_uplift,
                 }

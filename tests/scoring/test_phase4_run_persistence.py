@@ -128,10 +128,11 @@ def seeded_database(
     return database_url
 
 
-def _build_run_config() -> ScoringRunConfig:
+def _build_run_config(city_id: Any) -> ScoringRunConfig:
     return ScoringRunConfig(
         temporal_samples=TEMPORAL_SAMPLES,
         osm_snapshot_date=FIXTURE_METADATA.osm_snapshot_date,
+        city_id=city_id,
         perception_model_version="phase4-test-no-perception",
         imagery_capture_window=(date(2025, 1, 1), date(2025, 12, 31)),
         propagation_algorithm_version="pagerank-diffusion-0.1.0",
@@ -139,13 +140,13 @@ def _build_run_config() -> ScoringRunConfig:
     )
 
 
-def _build_scorers(seeded_database: str) -> list[Any]:
+def _build_scorers(seeded_database: str, city_id: Any) -> list[Any]:
     """Glare + Junction + Historical. Perception is omitted because the
     fixture network has no imagery; perception is covered separately."""
     dsn = seeded_database.replace("postgresql+psycopg://", "postgresql://", 1)
     with psycopg.connect(dsn) as conn:
-        topology_loader = make_topology_loader(conn)
-        incident_loader = make_incident_loader(conn)
+        topology_loader = make_topology_loader(conn, city_id=city_id)
+        incident_loader = make_incident_loader(conn, city_id=city_id)
     return [
         GlareScorer(),
         JunctionComplexityScorer(topology_loader=topology_loader),
@@ -161,11 +162,12 @@ class TestPhase4ScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _build_run_config()
+        config = _build_run_config(cambridge_city_id)
         summary = execute_phase4_scoring_run(
             config=config,
-            scorers=_build_scorers(seeded_database),
+            scorers=_build_scorers(seeded_database, cambridge_city_id),
             database_url=seeded_database,
         )
         assert summary.rows_written == 3 * 24 == 72
@@ -182,11 +184,12 @@ class TestPhase4ScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _build_run_config()
+        config = _build_run_config(cambridge_city_id)
         execute_phase4_scoring_run(
             config=config,
-            scorers=_build_scorers(seeded_database),
+            scorers=_build_scorers(seeded_database, cambridge_city_id),
             database_url=seeded_database,
         )
         with owner_conn.cursor() as cur:
@@ -198,11 +201,12 @@ class TestPhase4ScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _build_run_config()
+        config = _build_run_config(cambridge_city_id)
         execute_phase4_scoring_run(
             config=config,
-            scorers=_build_scorers(seeded_database),
+            scorers=_build_scorers(seeded_database, cambridge_city_id),
             database_url=seeded_database,
         )
         with owner_conn.cursor() as cur:
@@ -240,11 +244,12 @@ class TestPhase4ScoringRun:
         self,
         seeded_database: str,
         owner_conn: psycopg.Connection[Any],
+        cambridge_city_id: Any,
     ) -> None:
-        config = _build_run_config()
+        config = _build_run_config(cambridge_city_id)
         execute_phase4_scoring_run(
             config=config,
-            scorers=_build_scorers(seeded_database),
+            scorers=_build_scorers(seeded_database, cambridge_city_id),
             database_url=seeded_database,
         )
         with owner_conn.cursor() as cur:
