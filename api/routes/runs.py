@@ -1,63 +1,44 @@
-"""``GET /runs/{run_a}/delta/{run_b}`` — paginated per-segment risk deltas.
+"""City-scoped scoring-run endpoints — Phase 4b Task 3.3 router refactor.
 
-Phase 5 Task 2.4. The route stitches together three already-built pieces:
+Routes mounted under ``/api/cities/{slug}/runs``:
 
-* ``api.repos.segment_scores`` (Task 2.3) — the single self-JOIN that
-  paginates score pairs at one hour-of-day.
-* ``api.delta.compute_segment_delta`` (Task 2.2) — the pure-functional
-  ``score_b - score_a`` reducer that preserves the composite
-  decomposition (``composite_delta == local_contribution_delta +
-  propagation_uplift_delta``).
-* ``api.schemas`` — :class:`DeltaResponse` and friends (Task 2.1).
+- ``GET /api/cities/{slug}/runs`` — list every scoring run for the
+  city, newest-first, with the full six-field provenance bundle. Moved
+  from ``/runs``.
 
-Validation order (cheapest checks first, so a bad request never touches
-the JOIN):
+- ``GET /api/cities/{slug}/runs/{run_id}`` — one run's metadata (NEW
+  in Phase 4b). A run from a different city returns 404, not a
+  different-city's row.
 
-1. **422** when ``run_a == run_b`` — a self-delta is meaningless.
-2. **404** when either run UUID is missing from ``scoring_runs`` (per
-   :func:`api.repos.segment_scores.runs_exist`).
-3. **200** with the paginated body.
+- ``GET /api/cities/{slug}/runs/{run_id}/scores`` — paginated per-
+  segment scores for one (city, run) pair (NEW in Phase 4b). Each row
+  carries the full composite decomposition + sub-scores so the
+  explainability invariant holds on the scores-list path too.
 
-Confidence-indicator note (deviation from the Task 2.3 repo docstring's
-sketch): ``segment_scores`` persists confidence as a *scalar*; the
-matching ``limiter`` label is not stored. The single-segment detail
-route reconstructs the real limiter by re-querying ``segment_imagery``
-and recomputing freshness / coverage / model — viable for one segment
-but N+1-heavy for a paginated list of hundreds. This route therefore
-emits the recorded scalar value paired with ``limiter="model"`` as a
-documented Phase-5 approximation: the value is honest (it *is* the
-min-rule output computed at scoring time), but the limiter label is a
-default rather than a per-row truth. Captured under "Discovered during
-implementation" in ``conductor/tracks/phase-5-delta-deployment/index.md``
-so a future task can either (a) persist ``confidence_limiter`` on
-``segment_scores`` via a migration, or (b) batch the imagery lookup
-across the page and recompute. Either is a no-op extension; today's
-shape ships the right *value* and a stable label for the UI.
+- ``GET /api/cities/{slug}/runs/{run_a}/delta/{run_b}`` — paginated
+  per-segment deltas between two runs. Moved from ``/runs/{a}/delta/
+  {b}``; both runs must belong to ``{slug}``.
 
-Time parameter: ``t`` is an optional ISO-8601 UTC instant. Its
-hour-of-day picks the row pair on each side (Phase 4 writes 24 rows per
-``(segment, run)`` keyed by ``scoring_run_timestamp``). When omitted,
-defaults to noon UTC — matches the weekly-noon cron cadence and the
-test fixtures' hour.
-
-Plan deviation: this lives at ``api/routes/runs.py`` rather than the
-``api/services/`` path the plan named, mirroring the existing flat
-``api/routes/`` layout (``segments.py``, ``admin.py``). See ADR-style
-note in ``conductor/tracks/phase-5-delta-deployment/index.md`` under
-"Discovered during implementation" alongside the Task 2.1 / 2.2 / 2.3
-notes.
+Pre-refactor confidence-indicator note still applies: ``segment_scores``
+persists ``confidence`` as a scalar without a ``limiter`` label. The
+delta route emits ``limiter="model"`` as a documented Phase-5
+approximation; the segment-detail route reconstructs the real limiter
+from imagery. See ``conductor/tracks/phase-5-delta-deployment/index.md``
+under "Discovered during implementation".
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 import psycopg
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.db import conn
 from api.delta import SegmentScoreSnapshot, SubScoreValues, compute_segment_delta
+from api.dependencies import resolve_city_id
 from api.repos.segment_scores import (
     ScorePairRow,
     SegmentScoreRow,
@@ -70,11 +51,15 @@ from api.schemas import (
     DeltaResponse,
     RunId,
     RunListResponse,
+    RunScoreEntry,
+    RunScoresResponse,
     ScoringRunMetadata,
     SegmentDelta,
+    SubScore,
+    SubScores,
 )
 
-router = APIRouter(prefix="/runs", tags=["runs"])
+router = APIRouter(prefix="/api/cities/{slug}/runs", tags=["runs"])
 
 
 _DEFAULT_PAGE_SIZE = 100
@@ -82,6 +67,9 @@ _MAX_PAGE_SIZE = 1000
 _DEFAULT_HOUR = 12  # Noon UTC — matches the weekly-cron cadence.
 
 
+# All run-reading SQL gains a ``city_id`` filter so a run that lives in
+# another city is invisible to the route. Composite (city_id, ...)
+# indexes added by migration 0017 make this index-supported.
 _SELECT_RUN_METADATA_SQL = """
 SELECT
     id,
@@ -92,7 +80,7 @@ SELECT
     upper(imagery_capture_window) AS imagery_capture_window_end,
     propagation_algorithm_version
 FROM scoring_runs
-WHERE id = %(run_id)s
+WHERE id = %(run_id)s AND city_id = %(city_id)s
 """
 
 
@@ -106,12 +94,36 @@ SELECT
     upper(imagery_capture_window) AS imagery_capture_window_end,
     propagation_algorithm_version
 FROM scoring_runs
+WHERE city_id = %(city_id)s
 ORDER BY scoring_run_timestamp DESC
 """
 
 
+# Most recent score row per segment for one (city, run) pair. Mirrors
+# the detail route's snapping behavior at noon (the default).
+_LIST_RUN_SCORES_SQL = """
+SELECT DISTINCT ON (segment_id)
+    segment_id,
+    composite_risk,
+    propagation_uplift,
+    sub_score_lane_marking,
+    sub_score_glare,
+    sub_score_junction_complexity,
+    sub_score_historical,
+    confidence,
+    is_stub_lane_marking,
+    is_stub_glare,
+    is_stub_junction_complexity,
+    is_stub_historical
+FROM segment_scores
+WHERE scoring_run_id = %(run_id)s
+  AND city_id = %(city_id)s
+ORDER BY segment_id, scoring_run_timestamp DESC
+"""
+
+
 async def _fetch_run_metadata(
-    connection: psycopg.AsyncConnection, run_id: UUID
+    connection: psycopg.AsyncConnection, run_id: UUID, city_id: UUID
 ) -> ScoringRunMetadata:
     """Load one ``scoring_runs`` row into the typed metadata bundle.
 
@@ -120,10 +132,12 @@ async def _fetch_run_metadata(
     is a programmer error worth surfacing loudly.
     """
     async with connection.cursor() as cur:
-        await cur.execute(_SELECT_RUN_METADATA_SQL, {"run_id": run_id})
+        await cur.execute(_SELECT_RUN_METADATA_SQL, {"run_id": run_id, "city_id": city_id})
         row = await cur.fetchone()
     if row is None:
-        raise RuntimeError(f"scoring_runs row {run_id} disappeared between runs_exist and fetch")
+        raise RuntimeError(
+            f"scoring_runs row {run_id} / city {city_id} disappeared between runs_exist and fetch"
+        )
     (
         rid,
         ts,
@@ -186,6 +200,79 @@ def _pair_to_delta(pair: ScorePairRow) -> SegmentDelta:
     return compute_segment_delta(snap_a, snap_b)
 
 
+def _build_subscore(
+    value: float | None,
+    *,
+    is_stub: bool,
+    confidence: float,
+) -> SubScore:
+    return SubScore(
+        value=value if value is not None else 0.0,
+        confidence=confidence,
+        is_stub=is_stub,
+    )
+
+
+def _score_row_to_entry(row: Any) -> RunScoreEntry:
+    """Pack one ``_LIST_RUN_SCORES_SQL`` row into the API shape.
+
+    ``row`` is the psycopg cursor's positional tuple — typed ``Any`` so
+    the column-by-column unpack below stays readable. The DB schema
+    guarantees: column 0 is ``UUID``, columns 1-7 are ``numeric``
+    (Postgres ``DOUBLE PRECISION``) which decimal-typed nulls coerce to
+    None, columns 8-11 are ``boolean``.
+    """
+    (
+        segment_id,
+        composite_risk,
+        propagation_uplift,
+        sub_lane,
+        sub_glare,
+        sub_junction,
+        sub_historical,
+        scalar_confidence,
+        is_stub_lane,
+        is_stub_glare,
+        is_stub_junction,
+        is_stub_historical,
+    ) = row
+    composite = float(composite_risk)
+    uplift = float(propagation_uplift) if propagation_uplift is not None else 0.0
+    local = max(0.0, composite - uplift)
+    conf_value = float(scalar_confidence) if scalar_confidence is not None else 0.0
+    return RunScoreEntry(
+        segment_id=segment_id,
+        composite_risk=composite,
+        local_contribution=local,
+        propagation_uplift=uplift,
+        sub_scores=SubScores(
+            lane_marking_quality=_build_subscore(
+                None if sub_lane is None else float(sub_lane),
+                is_stub=bool(is_stub_lane),
+                confidence=conf_value,
+            ),
+            glare_exposure=_build_subscore(
+                None if sub_glare is None else float(sub_glare),
+                is_stub=bool(is_stub_glare),
+                confidence=conf_value,
+            ),
+            junction_complexity=_build_subscore(
+                None if sub_junction is None else float(sub_junction),
+                is_stub=bool(is_stub_junction),
+                confidence=0.0,
+            ),
+            historical_correlation=_build_subscore(
+                None if sub_historical is None else float(sub_historical),
+                is_stub=bool(is_stub_historical),
+                confidence=0.0,
+            ),
+        ),
+        # See module docstring for the ``limiter="model"`` Phase-5
+        # approximation.
+        confidence=ConfidenceIndicator(value=conf_value, limiter="model"),
+    )
+
+
 def _resolve_target_hour(t: datetime | None) -> int:
     """Pick the hour-of-day for the JOIN. Defaults to noon UTC."""
     if t is None:
@@ -195,23 +282,12 @@ def _resolve_target_hour(t: datetime | None) -> int:
 
 
 @router.get("", response_model=RunListResponse)
-async def list_runs() -> RunListResponse:
-    """Return every scoring run with full provenance, newest first.
-
-    Backs the RunPicker (Task 3.3) — the delta endpoint requires the
-    caller to already know two run UUIDs, so a separate list endpoint
-    is the discovery path. Newest-first matches what the picker shows
-    on open: the most recent run pre-selected makes the common-case
-    "compare last run to the one before" workflow a single click.
-
-    No pagination yet: scoring runs are weekly, so the list grows at
-    ~52 rows/year. If a long-running deploy ever pushes past a useful
-    page size, this endpoint can grow ``page`` / ``page_size`` query
-    params alongside :class:`RunListResponse` without a breaking
-    change.
-    """
+async def list_runs(
+    city_id: UUID = Depends(resolve_city_id),  # noqa: B008 - FastAPI's Depends() default is idiomatic
+) -> RunListResponse:
+    """Return every scoring run for the city, newest-first, with full provenance."""
     async with conn() as connection, connection.cursor() as cur:
-        await cur.execute(_LIST_RUNS_SQL)
+        await cur.execute(_LIST_RUNS_SQL, {"city_id": city_id})
         rows = await cur.fetchall()
     runs = [
         ScoringRunMetadata(
@@ -236,10 +312,77 @@ async def list_runs() -> RunListResponse:
     return RunListResponse(runs=runs)
 
 
+@router.get("/{run_id}", response_model=ScoringRunMetadata)
+async def get_run(
+    run_id: UUID,
+    city_id: UUID = Depends(resolve_city_id),  # noqa: B008 - FastAPI's Depends() default is idiomatic
+) -> ScoringRunMetadata:
+    """Return one run's six-field provenance bundle (NEW in Phase 4b).
+
+    404 when the run UUID is unknown or belongs to a different city —
+    the (run_id, city_id) WHERE clause makes "wrong city" and "doesn't
+    exist" indistinguishable, which matches the resource-identity
+    contract: a run is identified by ``(city, id)``, not ``id`` alone.
+    """
+    async with conn() as connection, connection.cursor() as cur:
+        await cur.execute(_SELECT_RUN_METADATA_SQL, {"run_id": run_id, "city_id": city_id})
+        row = await cur.fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"scoring run {run_id} not found in this city")
+    (
+        rid,
+        ts,
+        perception_version,
+        osm_date,
+        imagery_start,
+        imagery_end,
+        propagation_version,
+    ) = row
+    return ScoringRunMetadata(
+        scoring_run_id=RunId(rid),
+        scoring_run_timestamp=ts,
+        perception_model_version=perception_version,
+        osm_snapshot_date=osm_date,
+        imagery_capture_window_start=imagery_start,
+        imagery_capture_window_end=imagery_end,
+        propagation_algorithm_version=propagation_version,
+    )
+
+
+@router.get("/{run_id}/scores", response_model=RunScoresResponse)
+async def list_run_scores(
+    run_id: UUID,
+    city_id: UUID = Depends(resolve_city_id),  # noqa: B008 - FastAPI's Depends() default is idiomatic
+) -> RunScoresResponse:
+    """Return every persisted segment score for one (city, run) pair (NEW).
+
+    DISTINCT ON keeps the response one row per segment (Phase 4 writes
+    24 hourly rows per (segment, run); the list endpoint returns the
+    most recent one). Each row ships the full composite decomposition
+    + four sub-scores so the explainability invariant carries through.
+    """
+    # Verify (run_id, city_id) before issuing the score-list query so
+    # the 404 path doesn't return an empty success-shape body.
+    async with conn() as connection, connection.cursor() as cur:
+        await cur.execute(
+            "SELECT 1 FROM scoring_runs WHERE id = %s AND city_id = %s",
+            (run_id, city_id),
+        )
+        if await cur.fetchone() is None:
+            raise HTTPException(
+                status_code=404,
+                detail=f"scoring run {run_id} not found in this city",
+            )
+        await cur.execute(_LIST_RUN_SCORES_SQL, {"run_id": run_id, "city_id": city_id})
+        rows = await cur.fetchall()
+    return RunScoresResponse(scores=[_score_row_to_entry(row) for row in rows])
+
+
 @router.get("/{run_a}/delta/{run_b}", response_model=DeltaResponse)
 async def get_runs_delta(
     run_a: UUID,
     run_b: UUID,
+    city_id: UUID = Depends(resolve_city_id),  # noqa: B008 - FastAPI's Depends() default is idiomatic
     t: datetime | None = Query(  # noqa: B008 - FastAPI's Query() default is idiomatic
         default=None,
         description=(
@@ -255,7 +398,12 @@ async def get_runs_delta(
         description="Rows per page. Capped to keep p99 within the tile budget.",
     ),
 ) -> DeltaResponse:
-    """Return a paginated list of per-segment deltas between two runs."""
+    """Return a paginated list of per-segment deltas between two runs.
+
+    Both runs must belong to the city in the URL. A run that lives in
+    a different city returns 404 — there is no cross-city delta
+    operation.
+    """
     if run_a == run_b:
         raise HTTPException(
             status_code=422,
@@ -266,15 +414,21 @@ async def get_runs_delta(
     offset = (page - 1) * page_size
 
     async with conn() as connection:
-        a_exists, b_exists = await runs_exist(connection, run_a, run_b)
+        a_exists, b_exists = await runs_exist(connection, run_a, run_b, city_id)
         if not a_exists:
-            raise HTTPException(status_code=404, detail=f"scoring run {run_a} not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"scoring run {run_a} not found in this city",
+            )
         if not b_exists:
-            raise HTTPException(status_code=404, detail=f"scoring run {run_b} not found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"scoring run {run_b} not found in this city",
+            )
 
-        run_a_meta = await _fetch_run_metadata(connection, run_a)
-        run_b_meta = await _fetch_run_metadata(connection, run_b)
-        total = await count_pair_at_hour(connection, run_a, run_b, target_hour)
+        run_a_meta = await _fetch_run_metadata(connection, run_a, city_id)
+        run_b_meta = await _fetch_run_metadata(connection, run_b, city_id)
+        total = await count_pair_at_hour(connection, run_a, run_b, target_hour, city_id)
         deltas = [
             _pair_to_delta(pair)
             async for pair in fetch_pair_at_hour(
@@ -282,6 +436,7 @@ async def get_runs_delta(
                 run_a,
                 run_b,
                 target_hour,
+                city_id,
                 limit=page_size,
                 offset=offset,
             )

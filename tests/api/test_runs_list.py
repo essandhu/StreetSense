@@ -116,7 +116,7 @@ async def test_list_runs_happy_path_returns_200_with_typed_body(
     api_client: AsyncClient,
 ) -> None:
     _old, _new = seed_two_runs_for_listing
-    response = await api_client.get("/runs")
+    response = await api_client.get("/api/cities/cambridge/runs")
     assert response.status_code == 200
     body = response.json()
     assert "runs" in body
@@ -142,7 +142,7 @@ async def test_list_runs_orders_newest_first(
     api_client: AsyncClient,
 ) -> None:
     old_id, new_id = seed_two_runs_for_listing
-    response = await api_client.get("/runs")
+    response = await api_client.get("/api/cities/cambridge/runs")
     assert response.status_code == 200
     runs = response.json()["runs"]
     assert UUID(runs[0]["scoring_run_id"]) == new_id
@@ -155,7 +155,7 @@ async def test_list_runs_empty_returns_200_with_empty_list(
     api_client: AsyncClient,
 ) -> None:
     del clear_runs
-    response = await api_client.get("/runs")
+    response = await api_client.get("/api/cities/cambridge/runs")
     assert response.status_code == 200
     body = response.json()
     assert body == {"runs": []}
@@ -167,7 +167,7 @@ async def test_list_runs_carries_full_provenance(
     api_client: AsyncClient,
 ) -> None:
     del seed_two_runs_for_listing
-    response = await api_client.get("/runs")
+    response = await api_client.get("/api/cities/cambridge/runs")
     runs = response.json()["runs"]
     for r in runs:
         assert r["perception_model_version"] == _PERCEPTION_VERSION

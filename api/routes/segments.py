@@ -1,16 +1,32 @@
-"""GET /segments/{id} — per-segment detail with assembled confidence + imagery refs.
+"""City-scoped segment endpoints — Phase 4b Task 3.3 router refactor.
 
-Phase 3 changes (breaking, API 3.0):
+Routes mounted under ``/api/cities/{slug}/segments``:
 
-- ``confidence`` reshapes from scalar ``float`` to a
-  ``ConfidenceIndicator`` object (``{value, limiter}``) — see spec
-  Tech Note 4 and ``api.confidence``.
-- New ``imagery`` field: an array of ``ImageryReference``s with
-  pre-signed MinIO URLs (5-minute TTL) for source images that backed
-  the segment's perception sub-score.
-- ``lane_marking_quality`` ships its real ``model_uncertainty`` in
-  ``metadata`` (the perception scorer's per-segment aggregate from
-  spec Tech Note 2).
+- ``GET /api/cities/{slug}/segments?limit=N`` — list endpoint (NEW in
+  Phase 4b). Returns the city's segments with the latest available
+  score (or a stub fallback for segments not yet scored). Each row
+  carries the full composite decomposition + sub-scores
+  (explainability invariant on the list path).
+
+- ``GET /api/cities/{slug}/segments/{segment_id}`` — segment detail
+  (moved from ``/segments/{segment_id}``). Same response shape as
+  before; an additional ``WHERE rs.city_id = %(city_id)s`` guards
+  against cross-city access (cambridge segment requested under
+  ``/api/cities/phoenix/...`` returns 404 instead of leaking).
+
+Phase 3 (API 3.0) detail-shape notes still apply:
+
+- ``confidence`` is a ``ConfidenceIndicator`` object (``{value,
+  limiter}``).
+- ``imagery`` is an array of pre-signed MinIO URLs (5-minute TTL).
+- ``lane_marking_quality.metadata`` carries ``model_uncertainty``.
+
+Phase 4 (API 4.0, non-breaking) additions still apply:
+
+- ``propagation_uplift`` / ``local_contribution`` split
+  ``composite_risk`` into its components.
+- ``propagation_algorithm`` ships as ``{name, version}`` or ``None``
+  for pre-Phase-4 (sentinel) rows.
 """
 
 from __future__ import annotations
@@ -20,17 +36,20 @@ from datetime import UTC, date, datetime
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from minio import Minio
 
 from api.confidence import ConfidenceIndicator as DomainConfidence
 from api.confidence import assemble, coverage, freshness
 from api.db import conn
+from api.dependencies import resolve_city_id
 from api.schemas import (
     ConfidenceIndicator,
     ImageryReference,
     PropagationAlgorithmInfo,
     SegmentDetail,
+    SegmentListResponse,
+    SegmentSummary,
     SubScore,
     SubScores,
 )
@@ -61,7 +80,10 @@ def _parse_propagation_version(version: str | None) -> PropagationAlgorithmInfo 
     return PropagationAlgorithmInfo(name=name, version=semver)
 
 
-router = APIRouter(prefix="/segments", tags=["segments"])
+# Phase 4b: prefix carries the city slug. The ``resolve_city_id``
+# dependency runs on every handler and converts ``{slug}`` to the
+# matching ``cities.id`` UUID for downstream filtering.
+router = APIRouter(prefix="/api/cities/{slug}/segments", tags=["segments"])
 
 
 # --- MinIO client (module-level: cheap to share; thread-safe) -----------
@@ -100,6 +122,9 @@ def _to_pydantic_confidence(domain: DomainConfidence) -> ConfidenceIndicator:
     return ConfidenceIndicator(value=domain.value, limiter=domain.limiter)
 
 
+# The detail SELECT adds ``AND rs.city_id = %(city_id)s`` so a wrong-city
+# segment fetch falls through to the 404 path instead of leaking the
+# row. Same shape as Phase 4; only the WHERE clause grew.
 _SELECT_SNAPPED_SCORE_SQL = """
 SELECT
     rs.id            AS segment_id,
@@ -138,6 +163,7 @@ LEFT JOIN LATERAL (
 ) ss ON true
 LEFT JOIN scoring_runs sr ON sr.id = ss.scoring_run_id
 WHERE rs.id = %(id)s
+  AND rs.city_id = %(city_id)s
 """
 
 _SELECT_IMAGERY_SQL = """
@@ -151,6 +177,39 @@ SELECT
 FROM segment_imagery
 WHERE segment_id = %(id)s
 ORDER BY sample_index
+"""
+
+# Per-city segment list. Picks the most-recent score per segment via
+# DISTINCT ON, then returns the segments themselves so segments that
+# haven't been scored yet still appear (with a stub fallback). The
+# ``LEFT JOIN LATERAL`` lookup keeps the query a single round-trip
+# regardless of how many segments the city carries.
+_SELECT_SEGMENT_LIST_SQL = """
+SELECT
+    rs.id            AS segment_id,
+    rs.osm_way_id    AS osm_way_id,
+    ss.composite_risk,
+    ss.propagation_uplift,
+    ss.sub_score_lane_marking,
+    ss.sub_score_glare,
+    ss.sub_score_junction_complexity,
+    ss.sub_score_historical,
+    ss.confidence,
+    ss.is_stub_lane_marking,
+    ss.is_stub_glare,
+    ss.is_stub_junction_complexity,
+    ss.is_stub_historical
+FROM road_segments rs
+LEFT JOIN LATERAL (
+    SELECT *
+    FROM segment_scores s
+    WHERE s.segment_id = rs.id
+    ORDER BY s.inserted_at DESC
+    LIMIT 1
+) ss ON true
+WHERE rs.city_id = %(city_id)s
+ORDER BY rs.id
+LIMIT %(limit)s
 """
 
 
@@ -217,9 +276,131 @@ def _confidence_inputs(
     return assemble(freshness_value=fresh, coverage_value=cov, model_uncertainty=model_uncertainty)
 
 
+def _summary_from_row(row: tuple[Any, ...]) -> SegmentSummary:
+    """Pack one ``_SELECT_SEGMENT_LIST_SQL`` row into the API shape.
+
+    Segments without a ``segment_scores`` row fall through to a stub
+    composite (so the list always returns sensible numbers), matching
+    the detail endpoint's "no run yet" fallback. Confidence is left
+    ``None`` in that branch — the list endpoint omits per-row imagery
+    lookups (would be N+1 over the city's segments) so the rich
+    confidence-assembly path isn't available here.
+    """
+    (
+        seg_id,
+        osm_way_id,
+        composite_risk,
+        propagation_uplift,
+        sub_lane,
+        sub_glare,
+        sub_junction,
+        sub_historical,
+        scalar_confidence,
+        is_stub_lane,
+        is_stub_glare,
+        is_stub_junction,
+        is_stub_historical,
+    ) = row
+
+    if composite_risk is None:
+        # Segment ingested but not yet scored → stub fallback.
+        stub = stub_risk(seg_id)
+        return SegmentSummary(
+            segment_id=seg_id,
+            osm_way_id=osm_way_id,
+            composite_risk=stub.composite,
+            local_contribution=stub.composite,
+            propagation_uplift=0.0,
+            sub_scores=SubScores(
+                lane_marking_quality=_build_subscore(
+                    stub.sub_scores.lane_marking_quality, is_stub=True, confidence=0.0
+                ),
+                glare_exposure=_build_subscore(
+                    stub.sub_scores.glare_exposure, is_stub=True, confidence=0.0
+                ),
+                junction_complexity=_build_subscore(
+                    stub.sub_scores.junction_complexity, is_stub=True, confidence=0.0
+                ),
+                historical_correlation=_build_subscore(
+                    stub.sub_scores.historical_correlation, is_stub=True, confidence=0.0
+                ),
+            ),
+            confidence=None,
+        )
+
+    composite_value = float(composite_risk)
+    uplift_value = float(propagation_uplift) if propagation_uplift is not None else 0.0
+    local_value = max(0.0, composite_value - uplift_value)
+    conf_value = float(scalar_confidence) if scalar_confidence is not None else 0.0
+    return SegmentSummary(
+        segment_id=seg_id,
+        osm_way_id=osm_way_id,
+        composite_risk=composite_value,
+        local_contribution=local_value,
+        propagation_uplift=uplift_value,
+        sub_scores=SubScores(
+            lane_marking_quality=_build_subscore(
+                None if sub_lane is None else float(sub_lane),
+                is_stub=bool(is_stub_lane),
+                confidence=conf_value,
+            ),
+            glare_exposure=_build_subscore(
+                None if sub_glare is None else float(sub_glare),
+                is_stub=bool(is_stub_glare),
+                confidence=conf_value,
+            ),
+            junction_complexity=_build_subscore(
+                None if sub_junction is None else float(sub_junction),
+                is_stub=bool(is_stub_junction),
+                confidence=0.0,
+            ),
+            historical_correlation=_build_subscore(
+                None if sub_historical is None else float(sub_historical),
+                is_stub=bool(is_stub_historical),
+                confidence=0.0,
+            ),
+        ),
+        # The list path doesn't run the imagery-driven confidence
+        # assembly (would be N+1); we ship the scalar from
+        # segment_scores under the conservative "model" limiter so the
+        # shape is correct. Detail endpoint remains the canonical
+        # source of truth for the rich confidence breakdown.
+        confidence=ConfidenceIndicator(value=conf_value, limiter="model"),
+    )
+
+
+@router.get("", response_model=SegmentListResponse)
+async def list_segments(
+    city_id: UUID = Depends(resolve_city_id),  # noqa: B008 - FastAPI's Depends() default is idiomatic
+    limit: int = Query(
+        default=50,
+        ge=1,
+        le=500,
+        description=(
+            "Maximum segments to return. Capped at 500 to keep the "
+            "response within the tile-style payload budget."
+        ),
+    ),
+) -> SegmentListResponse:
+    """List the city's segments with their latest scores.
+
+    The list endpoint is a tile-adjacent read for clients that don't
+    want vector-tile geometry yet (or for non-map UIs). Pagination is
+    intentionally minimal — a single ``limit`` parameter — because the
+    map case is served by ``/tiles/...`` (Task 3.6) and the off-map
+    case has no strong pagination need.
+    """
+    async with conn() as c, c.cursor() as cur:
+        await cur.execute(_SELECT_SEGMENT_LIST_SQL, {"city_id": city_id, "limit": limit})
+        rows = await cur.fetchall()
+
+    return SegmentListResponse(segments=[_summary_from_row(row) for row in rows])
+
+
 @router.get("/{segment_id}", response_model=SegmentDetail)
 async def get_segment(
     segment_id: UUID,
+    city_id: UUID = Depends(resolve_city_id),  # noqa: B008 - FastAPI's Depends() default is idiomatic
     t: datetime | None = Query(  # noqa: B008 - FastAPI's Query() as default is the idiomatic pattern
         default=None,
         description=(
@@ -228,13 +409,21 @@ async def get_segment(
         ),
     ),
 ) -> SegmentDetail:
-    """Return the per-segment detail payload (API 3.0)."""
+    """Return the per-segment detail payload (API 3.0).
+
+    A segment fetched under the wrong city slug returns 404, not the
+    row — the ``WHERE rs.city_id = %(city_id)s`` clause guards
+    cross-city access at the query layer.
+    """
     t_param: datetime | None = None
     if t is not None:
         t_param = t if t.tzinfo is not None else t.replace(tzinfo=UTC)
 
     async with conn() as c, c.cursor() as cur:
-        await cur.execute(_SELECT_SNAPPED_SCORE_SQL, {"id": segment_id, "t": t_param})
+        await cur.execute(
+            _SELECT_SNAPPED_SCORE_SQL,
+            {"id": segment_id, "t": t_param, "city_id": city_id},
+        )
         row = await cur.fetchone()
 
     if row is None:

@@ -74,9 +74,7 @@ def _seeded_cities(database_url: str) -> None:
 # --- Helpers --------------------------------------------------------------
 
 
-_REQUIRED_FIELDS: frozenset[str] = frozenset(
-    {"slug", "name", "bbox", "default_zoom", "timezone"}
-)
+_REQUIRED_FIELDS: frozenset[str] = frozenset({"slug", "name", "bbox", "default_zoom", "timezone"})
 
 
 def _assert_city_shape(entry: dict[str, object]) -> None:
@@ -85,29 +83,26 @@ def _assert_city_shape(entry: dict[str, object]) -> None:
     assert not missing, f"city entry missing fields: {sorted(missing)}; got {entry!r}"
 
     slug = entry["slug"]
-    assert isinstance(slug, str) and slug, f"slug must be non-empty str; got {slug!r}"
+    assert isinstance(slug, str), f"slug must be str; got {slug!r}"
+    assert slug, f"slug must be non-empty; got {slug!r}"
 
     name = entry["name"]
-    assert isinstance(name, str) and name, f"name must be non-empty str; got {name!r}"
+    assert isinstance(name, str), f"name must be str; got {name!r}"
+    assert name, f"name must be non-empty; got {name!r}"
 
     bbox = entry["bbox"]
-    assert isinstance(bbox, list) and len(bbox) == 4, (
-        f"bbox must be a 4-element list; got {bbox!r}"
-    )
+    assert isinstance(bbox, list), f"bbox must be a list; got {bbox!r}"
+    assert len(bbox) == 4, f"bbox must be 4-element; got {bbox!r}"
     for component in bbox:
-        assert isinstance(component, (int, float)), (
-            f"bbox components must be numeric; got {bbox!r}"
-        )
+        assert isinstance(component, (int, float)), f"bbox components must be numeric; got {bbox!r}"
 
     zoom = entry["default_zoom"]
-    assert isinstance(zoom, int) and 1 <= zoom <= 22, (
-        f"default_zoom must be int in [1,22]; got {zoom!r}"
-    )
+    assert isinstance(zoom, int), f"default_zoom must be int; got {zoom!r}"
+    assert 1 <= zoom <= 22, f"default_zoom must be in [1,22]; got {zoom!r}"
 
     tz = entry["timezone"]
-    assert isinstance(tz, str) and "/" in tz, (
-        f"timezone must be IANA name (contains '/'); got {tz!r}"
-    )
+    assert isinstance(tz, str), f"timezone must be str; got {tz!r}"
+    assert "/" in tz, f"timezone must be IANA name (contains '/'); got {tz!r}"
 
 
 # --- Tests ----------------------------------------------------------------
@@ -117,9 +112,7 @@ class TestCitiesListShape:
     """Response envelope, per-entry field shape, and the expected set."""
 
     @pytest.mark.asyncio
-    async def test_returns_200_with_wrapped_cities_list(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_returns_200_with_wrapped_cities_list(self, api_client: AsyncClient) -> None:
         """The endpoint exists, returns 200, and wraps the array under ``cities``."""
         resp = await api_client.get("/api/cities")
         assert resp.status_code == 200, resp.text
@@ -131,9 +124,7 @@ class TestCitiesListShape:
         assert isinstance(body["cities"], list)
 
     @pytest.mark.asyncio
-    async def test_returns_at_least_the_five_seeded_cities(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_returns_at_least_the_five_seeded_cities(self, api_client: AsyncClient) -> None:
         """ADR 0010 ships five slugs; the list must include them all.
 
         Asserts a *subset* relationship (not equality) so future cities
@@ -145,9 +136,7 @@ class TestCitiesListShape:
         assert not missing, f"cities-list missing seeded slugs: {sorted(missing)}"
 
     @pytest.mark.asyncio
-    async def test_each_entry_has_the_required_field_shape(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_each_entry_has_the_required_field_shape(self, api_client: AsyncClient) -> None:
         """Every entry carries slug / name / bbox / default_zoom / timezone with valid types."""
         body = (await api_client.get("/api/cities")).json()
         for entry in body["cities"]:
@@ -184,9 +173,7 @@ class TestCitiesListShape:
         """
         body = (await api_client.get("/api/cities")).json()
         slugs = [entry["slug"] for entry in body["cities"]]
-        assert slugs == sorted(slugs), (
-            f"cities not sorted by slug; got {slugs!r}"
-        )
+        assert slugs == sorted(slugs), f"cities not sorted by slug; got {slugs!r}"
 
 
 class TestCitiesListETagCaching:
@@ -200,20 +187,15 @@ class TestCitiesListETagCaching:
     """
 
     @pytest.mark.asyncio
-    async def test_response_carries_an_etag_header(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_response_carries_an_etag_header(self, api_client: AsyncClient) -> None:
         resp = await api_client.get("/api/cities")
         assert resp.status_code == 200
         etag = resp.headers.get("etag")
-        assert etag is not None and etag.strip() != "", (
-            f"missing or empty ETag header; got {resp.headers!r}"
-        )
+        assert etag is not None, f"missing ETag header; got {resp.headers!r}"
+        assert etag.strip() != "", f"empty ETag header; got {resp.headers!r}"
 
     @pytest.mark.asyncio
-    async def test_etag_is_stable_across_calls(
-        self, api_client: AsyncClient
-    ) -> None:
+    async def test_etag_is_stable_across_calls(self, api_client: AsyncClient) -> None:
         """Two GETs with no intervening write yield the same ETag.
 
         The ETag is a body hash, and the body is deterministic (the
@@ -223,9 +205,7 @@ class TestCitiesListETagCaching:
         """
         first = (await api_client.get("/api/cities")).headers["etag"]
         second = (await api_client.get("/api/cities")).headers["etag"]
-        assert first == second, (
-            f"ETag is not stable across calls: {first!r} != {second!r}"
-        )
+        assert first == second, f"ETag is not stable across calls: {first!r} != {second!r}"
 
     @pytest.mark.asyncio
     async def test_conditional_get_with_matching_etag_returns_304(
@@ -234,9 +214,7 @@ class TestCitiesListETagCaching:
         """``If-None-Match: <current_etag>`` → 304 Not Modified, empty body."""
         first = await api_client.get("/api/cities")
         etag = first.headers["etag"]
-        revalidation = await api_client.get(
-            "/api/cities", headers={"If-None-Match": etag}
-        )
+        revalidation = await api_client.get("/api/cities", headers={"If-None-Match": etag})
         assert revalidation.status_code == 304, (
             f"expected 304 on revalidation; got {revalidation.status_code} "
             f"with body {revalidation.text!r}"

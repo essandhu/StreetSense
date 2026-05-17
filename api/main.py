@@ -25,15 +25,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 import structlog
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 from starlette.types import Scope
 
 from api.auth import BasicAuthMiddleware
 from api.db import close_pool
+from api.dependencies import UnknownCitySlug
 from api.routes import admin, runs, segments
 
 if sys.platform == "win32":
@@ -129,6 +130,21 @@ def create_app() -> FastAPI:
     app.include_router(segments.router)
     app.include_router(admin.router)
     app.include_router(runs.router)
+
+    # Phase 4b Task 3.3: a slug that doesn't resolve to a ``cities`` row
+    # surfaces as a 404 whose body carries the list of valid slugs at
+    # the top level. ``HTTPException(detail=...)`` would nest the list
+    # under ``body["detail"]``; the custom handler keeps it at the root
+    # so the frontend's error parsing schema is simple.
+    @app.exception_handler(UnknownCitySlug)
+    async def _unknown_city_handler(_request: Request, exc: UnknownCitySlug) -> JSONResponse:
+        return JSONResponse(
+            status_code=404,
+            content={
+                "message": f"unknown city slug {exc.slug!r}",
+                "valid_slugs": sorted(exc.valid_slugs),
+            },
+        )
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:

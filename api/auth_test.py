@@ -70,7 +70,7 @@ def test_auth_enabled_missing_header_returns_401() -> None:
     os.environ[_ENV] = _make_creds_env()
     app = create_app()
     client = TestClient(app)
-    response = client.get("/runs")
+    response = client.get("/api/cities/cambridge/runs")
     assert response.status_code == 401
     # The WWW-Authenticate header is what cues the browser's
     # native basic-auth prompt; without it the user sees only a
@@ -88,7 +88,9 @@ def test_auth_enabled_correct_credentials_pass() -> None:
     # We don't care what the inner route does — we care that auth
     # admitted us past the middleware.
     client = TestClient(app, raise_server_exceptions=False)
-    response = client.get("/runs", headers=_basic_header("admin", "correct-horse"))
+    response = client.get(
+        "/api/cities/cambridge/runs", headers=_basic_header("admin", "correct-horse")
+    )
     assert response.status_code != 401
 
 
@@ -97,7 +99,9 @@ def test_auth_enabled_wrong_password_returns_401() -> None:
     os.environ[_ENV] = _make_creds_env("admin", "correct-horse")
     app = create_app()
     client = TestClient(app)
-    response = client.get("/runs", headers=_basic_header("admin", "wrong-password"))
+    response = client.get(
+        "/api/cities/cambridge/runs", headers=_basic_header("admin", "wrong-password")
+    )
     assert response.status_code == 401
 
 
@@ -106,7 +110,9 @@ def test_auth_enabled_wrong_username_returns_401() -> None:
     os.environ[_ENV] = _make_creds_env("admin", "correct-horse")
     app = create_app()
     client = TestClient(app)
-    response = client.get("/runs", headers=_basic_header("eve", "correct-horse"))
+    response = client.get(
+        "/api/cities/cambridge/runs", headers=_basic_header("eve", "correct-horse")
+    )
     assert response.status_code == 401
 
 
@@ -117,7 +123,7 @@ def test_auth_enabled_malformed_header_returns_401() -> None:
     client = TestClient(app)
     # No "Basic " prefix.
     response = client.get(
-        "/runs",
+        "/api/cities/cambridge/runs",
         headers={"Authorization": base64.b64encode(b"admin:correct-horse").decode()},
     )
     assert response.status_code == 401
@@ -128,7 +134,10 @@ def test_auth_enabled_non_base64_payload_returns_401() -> None:
     os.environ[_ENV] = _make_creds_env()
     app = create_app()
     client = TestClient(app)
-    response = client.get("/runs", headers={"Authorization": "Basic not-base64!!"})
+    response = client.get(
+        "/api/cities/cambridge/runs",
+        headers={"Authorization": "Basic not-base64!!"},
+    )
     assert response.status_code == 401
 
 

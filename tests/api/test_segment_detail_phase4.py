@@ -131,7 +131,7 @@ def test_segment_detail_carries_phase4_fields(
     _seed_phase4_row(owner_conn, segment_id, cambridge_city_id, composite=0.65, uplift=0.15)
 
     with TestClient(create_app()) as client:
-        response = client.get(f"/segments/{segment_id}")
+        response = client.get(f"/api/cities/cambridge/segments/{segment_id}")
     assert response.status_code == 200, response.text
     body = response.json()
 
@@ -163,7 +163,7 @@ def test_segment_detail_sentinel_propagation_algorithm_is_none(
     )
 
     with TestClient(create_app()) as client:
-        response = client.get(f"/segments/{segment_id}")
+        response = client.get(f"/api/cities/cambridge/segments/{segment_id}")
     assert response.status_code == 200, response.text
     body = response.json()
 
@@ -177,7 +177,7 @@ def test_segment_detail_falls_back_when_no_score(
     """A segment with no scoring_run rows still returns a 200 with stub values
     + ``propagation_algorithm=None``."""
     with TestClient(create_app()) as client:
-        response = client.get(f"/segments/{segment_id}")
+        response = client.get(f"/api/cities/cambridge/segments/{segment_id}")
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["propagation_algorithm"] is None
@@ -194,7 +194,7 @@ def test_t_query_param_resolves_phase4_row(
     _seed_phase4_row(owner_conn, segment_id, cambridge_city_id, composite=0.65, uplift=0.20)
     t = datetime.now(UTC).isoformat()
     with TestClient(create_app()) as client:
-        response = client.get(f"/segments/{segment_id}", params={"t": t})
+        response = client.get(f"/api/cities/cambridge/segments/{segment_id}", params={"t": t})
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["propagation_algorithm"] == {

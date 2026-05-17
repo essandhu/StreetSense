@@ -29,6 +29,8 @@ def _all_ok_get(url: str, headers: dict[str, str] | None = None) -> mock.Mock:
     del headers  # unused — caller asserts on it separately
     if url.endswith("/runs"):
         return _mock_response(200, {"runs": []})
+    if url.endswith("/api/cities"):
+        return _mock_response(200, {"cities": []})
     return _mock_response(200, {"ok": True})
 
 
@@ -85,7 +87,10 @@ def test_smoke_hits_every_required_endpoint() -> None:
     assert any(u.endswith("/health") for u in urls)
     assert any(u.endswith("https://example.com/") for u in urls)
     assert any(u.endswith("/admin/freshness") for u in urls)
-    assert any(u.endswith("/runs") for u in urls)
+    # Phase 4b: /api/cities (cities list) + /api/cities/{slug}/runs
+    # (city-scoped runs list) replace the legacy /runs path.
+    assert any(u.endswith("/api/cities") for u in urls)
+    assert any(u.endswith("/api/cities/cambridge/runs") for u in urls)
     # Tile URL contains pg_tileserv path.
     assert any("/tiles/" in u for u in urls)
 

@@ -320,7 +320,7 @@ async def test_delta_happy_path_returns_200_with_well_formed_body(
     """Two seeded runs → 200 with a well-formed DeltaResponse body."""
     run_a, run_b, segments = seed_two_runs
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     assert response.status_code == 200, response.text
@@ -345,7 +345,7 @@ async def test_delta_run_metadata_bundles_match_persisted_rows(
     """``run_a`` and ``run_b`` metadata reflect what's in ``scoring_runs``."""
     run_a, run_b, _segments = seed_two_runs
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     body = response.json()
@@ -371,7 +371,7 @@ async def test_delta_each_row_carries_composite_decomposition(
     propagation_uplift_delta``."""
     run_a, run_b, _segments = seed_two_runs
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     body = response.json()
@@ -394,7 +394,7 @@ async def test_delta_each_row_carries_both_confidence_indicators(
     ConfidenceIndicator literal."""
     run_a, run_b, _segments = seed_two_runs
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     body = response.json()
@@ -416,7 +416,7 @@ async def test_delta_values_match_persisted_differences(
     The decomposition pins local_contribution_delta to the remainder."""
     run_a, run_b, segments = seed_two_runs
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     body = response.json()
@@ -443,7 +443,7 @@ async def test_delta_returns_404_when_run_a_missing(
 ) -> None:
     _run_a, run_b, _segments = seed_two_runs
     bogus = uuid4()
-    response = await api_client.get(f"/runs/{bogus}/delta/{run_b}")
+    response = await api_client.get(f"/api/cities/cambridge/runs/{bogus}/delta/{run_b}")
     assert response.status_code == 404, response.text
     body = response.json()
     # The unknown run ID is surfaced in the detail.
@@ -457,7 +457,7 @@ async def test_delta_returns_404_when_run_b_missing(
 ) -> None:
     run_a, _run_b, _segments = seed_two_runs
     bogus = uuid4()
-    response = await api_client.get(f"/runs/{run_a}/delta/{bogus}")
+    response = await api_client.get(f"/api/cities/cambridge/runs/{run_a}/delta/{bogus}")
     assert response.status_code == 404, response.text
     body = response.json()
     assert str(bogus) in body["detail"]
@@ -471,7 +471,7 @@ async def test_delta_returns_422_when_run_a_equals_run_b(
     """Self-delta makes no sense — the route rejects with 422 before any
     DB lookup so a self-request never touches the JOIN."""
     run_a, _run_b, _segments = seed_two_runs
-    response = await api_client.get(f"/runs/{run_a}/delta/{run_a}")
+    response = await api_client.get(f"/api/cities/cambridge/runs/{run_a}/delta/{run_a}")
     assert response.status_code == 422, response.text
 
 
@@ -481,7 +481,7 @@ async def test_delta_returns_422_for_invalid_uuid_path_param(
 ) -> None:
     """FastAPI's path-param coercion returns 422 for non-UUID strings —
     no DB needed."""
-    response = await api_client.get("/runs/not-a-uuid/delta/also-not-a-uuid")
+    response = await api_client.get("/api/cities/cambridge/runs/not-a-uuid/delta/also-not-a-uuid")
     assert response.status_code == 422, response.text
 
 
@@ -502,7 +502,7 @@ async def test_delta_pagination_slices_the_list(
     seen: set[str] = set()
     for page in (1, 2, 3):
         response = await api_client.get(
-            f"/runs/{run_a}/delta/{run_b}",
+            f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
             params={"t": t_iso, "page": page, "page_size": 2},
         )
         assert response.status_code == 200, response.text
@@ -528,7 +528,7 @@ async def test_delta_default_pagination_returns_first_page(
     overlapping segments fit on page 1."""
     run_a, run_b, segments = seed_two_runs
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     body = response.json()
@@ -552,7 +552,7 @@ async def test_delta_empty_intersection_returns_empty_deltas_and_zero_total(
     bundles populated."""
     run_a, run_b = seed_two_runs_no_overlap
     response = await api_client.get(
-        f"/runs/{run_a}/delta/{run_b}",
+        f"/api/cities/cambridge/runs/{run_a}/delta/{run_b}",
         params={"t": _RUN_B_TS.isoformat()},
     )
     assert response.status_code == 200, response.text

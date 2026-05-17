@@ -6,8 +6,12 @@ asserts every demonstrable-output endpoint returns 200:
   * ``GET /health``            — no auth (proves the gate exempts it).
   * ``GET /``                  — SPA index.html.
   * ``GET /admin/freshness``   — provenance surface (spec AC-8).
-  * ``GET /runs``              — list endpoint feeding the RunPicker.
-  * ``GET /segments/{any_id}`` — segment detail (uses the first id
+  * ``GET /api/cities``        — top-level city list (Phase 4b Task 3.4).
+  * ``GET /api/cities/{slug}/runs``
+                                — list endpoint feeding the RunPicker
+                                  (Phase 4b: city-scoped).
+  * ``GET /api/cities/{slug}/segments/{any_id}``
+                                — segment detail (uses the first id
                                   returned by a sample tile query, or
                                   a configured id).
   * ``GET /tiles/public.road_segments_tile/14/4934/6029.pbf``
@@ -96,36 +100,37 @@ def _check(
     return _CheckResult(name=name, url=url, ok=ok, status=response.status_code, detail=detail)
 
 
-def _first_segment_id(client: httpx.Client, base: str, auth: dict[str, str]) -> str | None:
-    """Pull one segment ID from the runs-list → delta path or a tile fetch.
+def _first_segment_id(
+    client: httpx.Client, base: str, city: str, auth: dict[str, str]
+) -> str | None:
+    """Resolve a segment ID for the segment-detail check.
 
-    Tries the cheap path first: list runs, take the first run, hit
-    /runs/{a}/delta/{a-prefixed-with-different-uuid}. If only one run
-    exists, falls back to a known-good UUID configured via env.
-
-    Returns None when no usable ID can be derived; the smoke test
-    then skips the segment-detail check rather than failing on a
-    pre-existing data state.
+    Phase 4b: the runs list is city-scoped, so even checking that one
+    isn't enough to derive a segment ID. The cheap path remains:
+    honour ``STREETSENSE_SMOKE_SEGMENT_ID`` if set. Otherwise return
+    None and the smoke test skips the segment-detail check (the tile
+    fetch already proves the data path is wired end-to-end).
     """
     override = os.environ.get("STREETSENSE_SMOKE_SEGMENT_ID")
     if override:
         return override
     try:
-        runs = client.get(f"{base}/runs", headers=auth).json().get("runs", [])
+        runs = client.get(f"{base}/api/cities/{city}/runs", headers=auth).json().get("runs", [])
     except (httpx.HTTPError, ValueError):
         return None
     if not runs:
         return None
     # The runs list gives us run IDs; we don't have segment IDs from
-    # /runs alone. The tile fetch carries segment_id in the MVT
-    # features — but parsing MVT here adds protobuf dep weight just
-    # for the smoke. Skip unless an override is set.
+    # /api/cities/{city}/runs alone. The tile fetch carries segment_id
+    # in the MVT features — but parsing MVT here adds protobuf dep
+    # weight just for the smoke. Skip unless an override is set.
     return None
 
 
 def smoke(
     base_url: str,
     *,
+    city: str = "cambridge",
     user: str | None = None,
     password: str | None = None,
     tile: str = _DEFAULT_TILE,
@@ -136,7 +141,7 @@ def smoke(
     tile_base = (tile_base_url or base).rstrip("/")
     auth = _basic_auth_header(user, password)
 
-    log.info("smoke.start", base_url=base, tile_base=tile_base, user=user)
+    log.info("smoke.start", base_url=base, tile_base=tile_base, city=city, user=user)
 
     results: list[_CheckResult] = []
     with httpx.Client(timeout=timeout, follow_redirects=True) as client:
@@ -155,16 +160,35 @@ def smoke(
                 expect_json=True,
             )
         )
-        # /runs — list endpoint (Task 3.3 backend).
-        results.append(_check(client, "runs_list", f"{base}/runs", headers=auth, expect_json=True))
+        # /api/cities — Phase 4b city list. Validates the top-level
+        # discovery endpoint the frontend uses on mount.
+        results.append(
+            _check(
+                client,
+                "cities_list",
+                f"{base}/api/cities",
+                headers=auth,
+                expect_json=True,
+            )
+        )
+        # /api/cities/{city}/runs — list endpoint (Phase 4b city-scoped).
+        results.append(
+            _check(
+                client,
+                "runs_list",
+                f"{base}/api/cities/{city}/runs",
+                headers=auth,
+                expect_json=True,
+            )
+        )
         # Segment detail — only if we can identify one.
-        segment_id = _first_segment_id(client, base, auth)
+        segment_id = _first_segment_id(client, base, city, auth)
         if segment_id:
             results.append(
                 _check(
                     client,
                     "segment_detail",
-                    f"{base}/segments/{segment_id}",
+                    f"{base}/api/cities/{city}/segments/{segment_id}",
                     headers=auth,
                     expect_json=True,
                 )
@@ -227,6 +251,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Basic-auth password.",
     )
     parser.add_argument(
+        "--city",
+        default=os.environ.get("STREETSENSE_SMOKE_CITY", "cambridge"),
+        help=(
+            "City slug for city-scoped endpoint checks (Phase 4b). "
+            "Defaults to cambridge — the seeded demo city."
+        ),
+    )
+    parser.add_argument(
         "--tile",
         default=os.environ.get("STREETSENSE_SMOKE_TILE", _DEFAULT_TILE),
         help='Tile coords as "z,x,y" (default: 14,4934,6029 — mid-Cambridge).',
@@ -244,6 +276,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("--base-url (or STREETSENSE_SMOKE_URL) is required")
     return smoke(
         args.base_url,
+        city=args.city,
         user=args.user,
         password=args.password,
         tile=args.tile,

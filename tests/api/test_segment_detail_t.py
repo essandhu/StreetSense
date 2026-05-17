@@ -67,7 +67,7 @@ class TestSegmentDetailWithT:
         self, api_client: AsyncClient, seeded_run: UUID
     ) -> None:
         resp = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T12:00:00Z"},
         )
         assert resp.status_code == 200, resp.text
@@ -98,7 +98,7 @@ class TestSegmentDetailWithT:
         self, api_client: AsyncClient, seeded_run: UUID
     ) -> None:
         resp = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T12:00:00Z"},
         )
         body = resp.json()
@@ -110,7 +110,7 @@ class TestSegmentDetailWithT:
     @pytest.mark.asyncio
     async def test_confidence_is_present(self, api_client: AsyncClient, seeded_run: UUID) -> None:
         resp = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T12:00:00Z"},
         )
         body = resp.json()
@@ -122,11 +122,11 @@ class TestSegmentDetailWithT:
     ) -> None:
         """Requesting 12:25Z should return the 12:00Z sample (nearest hour)."""
         resp_off = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T12:25:00Z"},
         )
         resp_on = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T12:00:00Z"},
         )
         assert resp_off.status_code == 200
@@ -140,7 +140,7 @@ class TestSegmentDetailWithT:
         """Pick a UTC instant where the Cambridge sun is below the
         horizon (06:00 UTC, midsummer = 02:00 EDT). Glare must be zero."""
         resp = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T06:00:00Z"},
         )
         assert resp.status_code == 200
@@ -153,7 +153,7 @@ class TestSegmentDetailWithT:
         self, api_client: AsyncClient, seeded_run: UUID
     ) -> None:
         resp = await api_client.get(
-            f"/segments/{seeded_run}",
+            f"/api/cities/cambridge/segments/{seeded_run}",
             params={"t": "2025-06-21T16:00:00Z"},
         )
         body = resp.json()
@@ -167,7 +167,7 @@ class TestSegmentDetailWithT:
         self, api_client: AsyncClient, seeded_run: UUID
     ) -> None:
         """Phase-1 behavior preserved: no `t` ⇒ most recent row."""
-        resp = await api_client.get(f"/segments/{seeded_run}")
+        resp = await api_client.get(f"/api/cities/cambridge/segments/{seeded_run}")
         assert resp.status_code == 200
         body = resp.json()
         # Still returns a valid SegmentDetail shape.

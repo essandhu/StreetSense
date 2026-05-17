@@ -80,7 +80,7 @@ _RUN_NEW_TS = datetime(2026, 5, 8, 12, 0, 0, tzinfo=UTC)
 # --- Fixtures -------------------------------------------------------------
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module", autouse=True)
 def _seeded_cities(database_url: str) -> None:
     """Ensure every YAML-configured city is in the ``cities`` table.
 
@@ -90,15 +90,23 @@ def _seeded_cities(database_url: str) -> None:
     "valid slug, no data" branch and the cross-city-isolation
     assertions. Idempotent — re-running with no YAML changes is a no-op
     (see :class:`ingestion.seed_cities.SeedSummary`).
+
+    Module-scoped autouse so every test in this file sees the cities
+    table fully populated regardless of execution order, without
+    polluting the parameter list of tests that don't otherwise care.
     """
     seed_cities(database_url)
 
 
 @pytest.fixture
-def phoenix_city_id(_seeded_cities: None, migrated_db: str) -> UUID:
+def phoenix_city_id(migrated_db: str) -> UUID:
     """Resolve phoenix's ``city_id``. Companion to the existing
-    ``cambridge_city_id`` fixture in ``tests/conftest.py``."""
-    del _seeded_cities
+    ``cambridge_city_id`` fixture in ``tests/conftest.py``.
+
+    Relies on the module-autouse ``_seeded_cities`` fixture above for
+    the bootstrap row; pytest fires autouse fixtures before function-
+    scoped ones, so the order is correct without an explicit dep.
+    """
     with psycopg.connect(migrated_db) as conn, conn.cursor() as cur:
         cur.execute("SELECT id FROM cities WHERE slug = 'phoenix'")
         row = cur.fetchone()
@@ -112,9 +120,7 @@ def phoenix_city_id(_seeded_cities: None, migrated_db: str) -> UUID:
 def _clean_score_tables(owner_conn: psycopg.Connection[Any]) -> None:
     """Wipe the score / segment tables. Does not touch ``cities``."""
     with owner_conn.cursor() as cur:
-        cur.execute(
-            "TRUNCATE segment_scores, scoring_runs, segment_imagery, road_segments CASCADE"
-        )
+        cur.execute("TRUNCATE segment_scores, scoring_runs, segment_imagery, road_segments CASCADE")
     owner_conn.commit()
 
 
@@ -377,25 +383,22 @@ class TestUnknownSlugReturns404WithValidSlugsListed:
     @pytest.mark.asyncio
     async def test_segments_list_unknown_slug(
         self,
-        _seeded_cities: None,
         api_client: AsyncClient,
     ) -> None:
-        del _seeded_cities
         resp = await api_client.get("/api/cities/atlantis/segments", params={"limit": 5})
         assert resp.status_code == 404
         body = resp.json()
         assert "valid_slugs" in body, f"404 body must list valid_slugs; got {body!r}"
         valid = body["valid_slugs"]
-        assert isinstance(valid, list) and len(valid) >= 1
+        assert isinstance(valid, list), f"valid_slugs must be a list; got {valid!r}"
+        assert len(valid) >= 1
         assert "cambridge" in valid
 
     @pytest.mark.asyncio
     async def test_segment_detail_unknown_slug(
         self,
-        _seeded_cities: None,
         api_client: AsyncClient,
     ) -> None:
-        del _seeded_cities
         resp = await api_client.get(f"/api/cities/atlantis/segments/{uuid4()}")
         assert resp.status_code == 404
         body = resp.json()
@@ -405,10 +408,8 @@ class TestUnknownSlugReturns404WithValidSlugsListed:
     @pytest.mark.asyncio
     async def test_runs_list_unknown_slug(
         self,
-        _seeded_cities: None,
         api_client: AsyncClient,
     ) -> None:
-        del _seeded_cities
         resp = await api_client.get("/api/cities/atlantis/runs")
         assert resp.status_code == 404
         body = resp.json()
@@ -418,10 +419,8 @@ class TestUnknownSlugReturns404WithValidSlugsListed:
     @pytest.mark.asyncio
     async def test_run_detail_unknown_slug(
         self,
-        _seeded_cities: None,
         api_client: AsyncClient,
     ) -> None:
-        del _seeded_cities
         resp = await api_client.get(f"/api/cities/atlantis/runs/{uuid4()}")
         assert resp.status_code == 404
         body = resp.json()
@@ -431,10 +430,8 @@ class TestUnknownSlugReturns404WithValidSlugsListed:
     @pytest.mark.asyncio
     async def test_run_scores_unknown_slug(
         self,
-        _seeded_cities: None,
         api_client: AsyncClient,
     ) -> None:
-        del _seeded_cities
         resp = await api_client.get(f"/api/cities/atlantis/runs/{uuid4()}/scores")
         assert resp.status_code == 404
         body = resp.json()
@@ -444,13 +441,9 @@ class TestUnknownSlugReturns404WithValidSlugsListed:
     @pytest.mark.asyncio
     async def test_runs_delta_unknown_slug(
         self,
-        _seeded_cities: None,
         api_client: AsyncClient,
     ) -> None:
-        del _seeded_cities
-        resp = await api_client.get(
-            f"/api/cities/atlantis/runs/{uuid4()}/delta/{uuid4()}"
-        )
+        resp = await api_client.get(f"/api/cities/atlantis/runs/{uuid4()}/delta/{uuid4()}")
         assert resp.status_code == 404
         body = resp.json()
         assert "valid_slugs" in body
@@ -530,9 +523,7 @@ class TestSegmentsListUnderCityPrefix:
         api_client: AsyncClient,
     ) -> None:
         del seed_cambridge_data
-        resp = await api_client.get(
-            "/api/cities/cambridge/segments", params={"limit": 5}
-        )
+        resp = await api_client.get("/api/cities/cambridge/segments", params={"limit": 5})
         assert resp.status_code == 200, resp.text
         body = resp.json()
         # Wrapped list shape (matches RunListResponse precedent) so a
@@ -556,9 +547,7 @@ class TestSegmentsListUnderCityPrefix:
         explicitly tested.
         """
         del seed_cambridge_data
-        resp = await api_client.get(
-            "/api/cities/cambridge/segments", params={"limit": 5}
-        )
+        resp = await api_client.get("/api/cities/cambridge/segments", params={"limit": 5})
         items = resp.json()["segments"]
         for entry in items:
             assert "composite_risk" in entry
@@ -576,9 +565,7 @@ class TestSegmentsListUnderCityPrefix:
             seed_phoenix_data["segment_a"],
             seed_phoenix_data["segment_b"],
         }
-        resp = await api_client.get(
-            "/api/cities/phoenix/segments", params={"limit": 50}
-        )
+        resp = await api_client.get("/api/cities/phoenix/segments", params={"limit": 50})
         assert resp.status_code == 200, resp.text
         returned_ids = {UUID(entry["segment_id"]) for entry in resp.json()["segments"]}
         assert returned_ids.isdisjoint(cambridge_ids), (
@@ -592,9 +579,7 @@ class TestSegmentsListUnderCityPrefix:
         api_client: AsyncClient,
     ) -> None:
         del seed_cambridge_data
-        resp = await api_client.get(
-            "/api/cities/cambridge/segments", params={"limit": 1}
-        )
+        resp = await api_client.get("/api/cities/cambridge/segments", params={"limit": 1})
         assert resp.status_code == 200, resp.text
         assert len(resp.json()["segments"]) == 1
 
@@ -725,7 +710,7 @@ class TestRunScoresUnderCityPrefix:
         body = resp.json()
         assert "scores" in body
         scores = body["scores"]
-        # Two segments × one run = two score rows.
+        # Two segments x one run = two score rows.
         assert len(scores) == 2
         for entry in scores:
             assert "segment_id" in entry
@@ -741,9 +726,7 @@ class TestRunScoresUnderCityPrefix:
         api_client: AsyncClient,
     ) -> None:
         cambridge_run = seed_phoenix_data["run_new"]
-        resp = await api_client.get(
-            f"/api/cities/phoenix/runs/{cambridge_run}/scores"
-        )
+        resp = await api_client.get(f"/api/cities/phoenix/runs/{cambridge_run}/scores")
         assert resp.status_code == 404, resp.text
 
 

@@ -433,3 +433,105 @@ class RunListResponse(BaseModel):
     """
 
     runs: list[ScoringRunMetadata]
+
+
+# -- Phase 4b — City-scoped list / scores schemas --------------------------
+#
+# Three response shapes the Phase 4b Task 3.3 router refactor adds:
+#
+#   * :class:`SegmentSummary` / :class:`SegmentListResponse` — back
+#     ``GET /api/cities/{slug}/segments?limit=N``, a new list endpoint
+#     the frontend will eventually call to populate map-side overlays
+#     for clients that haven't loaded tiles yet (or for non-map UIs).
+#     Every row carries the composite-risk decomposition so the
+#     explainability invariant holds on the list path, not just on
+#     detail.
+#
+#   * :class:`RunScoreEntry` / :class:`RunScoresResponse` — back
+#     ``GET /api/cities/{slug}/runs/{run_id}/scores``, paginated
+#     per-segment scores for one (city, run) pair. Same decomposition,
+#     same sub-score fields.
+#
+# Both shapes deliberately *omit* the per-segment imagery references
+# that :class:`SegmentDetail` carries. Imagery URLs are pre-signed on
+# request (5-minute TTL) and the per-row signing cost is N+1 over a
+# city's worth of segments. The detail endpoint is the right place
+# for imagery; lists return the headline numbers only.
+
+
+class SegmentSummary(BaseModel):
+    """One row of the city-scoped segment list.
+
+    Lighter than :class:`SegmentDetail`: omits imagery, glare metadata,
+    and the typed propagation_algorithm block. Keeps the four pieces a
+    list-view consumer needs:
+
+    - the segment's identity (UUID + osm_way_id)
+    - the composite decomposition (`composite_risk`,
+      `local_contribution`, `propagation_uplift`) — explainability
+      invariant on the list path
+    - the four sub-scores
+    - the confidence indicator (may be ``None`` if the segment hasn't
+      been scored yet)
+    """
+
+    segment_id: UUID
+    osm_way_id: int | None
+    composite_risk: float
+    local_contribution: float
+    propagation_uplift: float
+    sub_scores: SubScores
+    confidence: ConfidenceIndicator | None = Field(
+        None,
+        description=(
+            "Present when a ``segment_scores`` row exists for the "
+            "segment in the latest run. ``None`` when the segment is "
+            "ingested but not yet scored."
+        ),
+    )
+
+
+class SegmentListResponse(BaseModel):
+    """Response payload for ``GET /api/cities/{slug}/segments``.
+
+    Wrapped envelope matching :class:`RunListResponse` /
+    :class:`FreshnessReport` precedent so a future need for paging
+    fields or a summary count lands non-breaking.
+    """
+
+    segments: list[SegmentSummary]
+
+
+class RunScoreEntry(BaseModel):
+    """One row of ``GET /api/cities/{slug}/runs/{run_id}/scores``.
+
+    Same field shape as :class:`SegmentSummary` minus ``osm_way_id``
+    (the scores endpoint is scoped to one run; the caller already has
+    the run metadata if they need it, and OSM identity belongs with
+    the segment-level resource).
+    """
+
+    segment_id: UUID
+    composite_risk: float
+    local_contribution: float
+    propagation_uplift: float
+    sub_scores: SubScores
+    confidence: ConfidenceIndicator
+
+
+class RunScoresResponse(BaseModel):
+    """Response payload for ``GET /api/cities/{slug}/runs/{run_id}/scores``."""
+
+    scores: list[RunScoreEntry]
+
+
+class CitiesListResponse(BaseModel):
+    """Response payload for ``GET /api/cities`` (Phase 4b Task 3.4).
+
+    Wrapped list of every configured city. Backs the frontend city-
+    selector discovery (Phase 4 Task 4.4). The :class:`City` model
+    carries an optional DB UUID; this endpoint surfaces it (clients
+    that want it can read it; clients that key off ``slug`` ignore it).
+    """
+
+    cities: list[City]

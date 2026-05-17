@@ -185,7 +185,7 @@ async def test_confidence_is_object_with_limiter_and_value(
     _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
     _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=3)
 
-    resp = await api_client.get(f"/segments/{seed_segment}")
+    resp = await api_client.get(f"/api/cities/cambridge/segments/{seed_segment}")
     assert resp.status_code == 200, resp.text
     body = resp.json()
 
@@ -208,7 +208,7 @@ async def test_imagery_array_with_pre_signed_urls(
     _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
     _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=3)
 
-    resp = await api_client.get(f"/segments/{seed_segment}")
+    resp = await api_client.get(f"/api/cities/cambridge/segments/{seed_segment}")
     body = resp.json()
     imagery = body["imagery"]
     assert isinstance(imagery, list)
@@ -238,7 +238,7 @@ async def test_lane_marking_metadata_carries_model_uncertainty(
     _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
     _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=2)
 
-    resp = await api_client.get(f"/segments/{seed_segment}")
+    resp = await api_client.get(f"/api/cities/cambridge/segments/{seed_segment}")
     body = resp.json()
     lane = body["sub_scores"]["lane_marking_quality"]
     assert lane["is_stub"] is False
@@ -257,7 +257,7 @@ async def test_no_imagery_yields_coverage_limited_confidence(
     _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
     # No _seed_imagery_for call.
 
-    resp = await api_client.get(f"/segments/{seed_segment}")
+    resp = await api_client.get(f"/api/cities/cambridge/segments/{seed_segment}")
     body = resp.json()
     assert body["confidence"]["value"] == 0.0
     assert body["confidence"]["limiter"] == "coverage"
@@ -276,7 +276,7 @@ async def test_t_parameter_still_snaps(
     _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=1)
 
     resp = await api_client.get(
-        f"/segments/{seed_segment}",
+        f"/api/cities/cambridge/segments/{seed_segment}",
         params={"t": datetime.now(UTC).isoformat()},
     )
     assert resp.status_code == 200

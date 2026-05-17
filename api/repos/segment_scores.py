@@ -111,6 +111,8 @@ INNER JOIN segment_scores b
      = extract(hour from b.scoring_run_timestamp)
 WHERE a.scoring_run_id = %(run_a_id)s
   AND b.scoring_run_id = %(run_b_id)s
+  AND a.city_id = %(city_id)s
+  AND b.city_id = %(city_id)s
   AND extract(hour from a.scoring_run_timestamp) = %(target_hour)s
 ORDER BY a.segment_id
 LIMIT %(limit)s OFFSET %(offset)s
@@ -125,11 +127,19 @@ INNER JOIN segment_scores b
      = extract(hour from b.scoring_run_timestamp)
 WHERE a.scoring_run_id = %(run_a_id)s
   AND b.scoring_run_id = %(run_b_id)s
+  AND a.city_id = %(city_id)s
+  AND b.city_id = %(city_id)s
   AND extract(hour from a.scoring_run_timestamp) = %(target_hour)s
 """
 
+# Phase 4b: existence check is now city-scoped — a run that lives in
+# cambridge is "not found" from phoenix's perspective. Keeps the route
+# layer simple (no second roundtrip to verify city membership).
 RUNS_EXIST_SQL = """
-SELECT EXISTS (SELECT 1 FROM scoring_runs WHERE id = %(run_id)s)
+SELECT EXISTS (
+    SELECT 1 FROM scoring_runs
+    WHERE id = %(run_id)s AND city_id = %(city_id)s
+)
 """
 
 
@@ -139,17 +149,24 @@ SELECT EXISTS (SELECT 1 FROM scoring_runs WHERE id = %(run_id)s)
 
 
 async def runs_exist(
-    conn: psycopg.AsyncConnection, run_a_id: UUID, run_b_id: UUID
+    conn: psycopg.AsyncConnection,
+    run_a_id: UUID,
+    run_b_id: UUID,
+    city_id: UUID,
 ) -> tuple[bool, bool]:
-    """Check whether both run IDs reference existing ``scoring_runs`` rows.
+    """Check whether both run IDs reference rows in the given city.
 
-    Returns ``(a_exists, b_exists)``. The route layer maps either ``False``
-    to a 404 with the missing-run ID surfaced.
+    Phase 4b: existence is city-scoped. A run that lives in cambridge
+    is "not found" when checked under phoenix — that's the right
+    answer for the delta route which 404s a cross-city pairing.
+
+    Returns ``(a_exists, b_exists)``. The route layer maps either
+    ``False`` to a 404 with the missing-run ID surfaced.
     """
     async with conn.cursor() as cur:
-        await cur.execute(RUNS_EXIST_SQL, {"run_id": run_a_id})
+        await cur.execute(RUNS_EXIST_SQL, {"run_id": run_a_id, "city_id": city_id})
         a_row = await cur.fetchone()
-        await cur.execute(RUNS_EXIST_SQL, {"run_id": run_b_id})
+        await cur.execute(RUNS_EXIST_SQL, {"run_id": run_b_id, "city_id": city_id})
         b_row = await cur.fetchone()
     a_exists = bool(a_row[0]) if a_row else False
     b_exists = bool(b_row[0]) if b_row else False
@@ -161,8 +178,9 @@ async def count_pair_at_hour(
     run_a_id: UUID,
     run_b_id: UUID,
     target_hour: int,
+    city_id: UUID,
 ) -> int:
-    """Count the segments scored in both runs at ``target_hour``.
+    """Count the segments scored in both runs at ``target_hour`` within ``city_id``.
 
     ``target_hour`` is an integer in ``[0, 23]`` — typically derived from
     the route's ``t`` query parameter via ``t.astimezone(UTC).hour``.
@@ -174,6 +192,7 @@ async def count_pair_at_hour(
                 "run_a_id": run_a_id,
                 "run_b_id": run_b_id,
                 "target_hour": target_hour,
+                "city_id": city_id,
             },
         )
         row = await cur.fetchone()
@@ -185,11 +204,12 @@ async def fetch_pair_at_hour(
     run_a_id: UUID,
     run_b_id: UUID,
     target_hour: int,
+    city_id: UUID,
     *,
     limit: int,
     offset: int = 0,
 ) -> AsyncIterator[ScorePairRow]:
-    """Stream the paired score rows for the requested hour-of-day.
+    """Stream the paired score rows for the requested hour-of-day, scoped to city.
 
     Yields one :class:`ScorePairRow` per segment present in both runs at
     ``target_hour``, ordered by ``segment_id`` for stable pagination.
@@ -207,6 +227,7 @@ async def fetch_pair_at_hour(
                 "target_hour": target_hour,
                 "limit": limit,
                 "offset": offset,
+                "city_id": city_id,
             },
         )
         async for row in cur:

@@ -285,12 +285,13 @@ def seed_two_runs(
 async def test_runs_exist_returns_true_for_inserted_runs(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     run_a, run_b, _segments = seed_two_runs
     async with await psycopg.AsyncConnection.connect(
         database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     ) as conn:
-        a_exists, b_exists = await runs_exist(conn, run_a, run_b)
+        a_exists, b_exists = await runs_exist(conn, run_a, run_b, cambridge_city_id)
     assert a_exists is True
     assert b_exists is True
 
@@ -299,13 +300,14 @@ async def test_runs_exist_returns_true_for_inserted_runs(
 async def test_runs_exist_returns_false_for_unknown_run(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     run_a, _run_b, _segments = seed_two_runs
     bogus = uuid4()
     async with await psycopg.AsyncConnection.connect(
         database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     ) as conn:
-        a_exists, bogus_exists = await runs_exist(conn, run_a, bogus)
+        a_exists, bogus_exists = await runs_exist(conn, run_a, bogus, cambridge_city_id)
     assert a_exists is True
     assert bogus_exists is False
 
@@ -314,13 +316,14 @@ async def test_runs_exist_returns_false_for_unknown_run(
 async def test_count_pair_at_hour_returns_intersection_size(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     """Only the 5 segments present in BOTH runs at noon should be counted."""
     run_a, run_b, segments = seed_two_runs
     async with await psycopg.AsyncConnection.connect(
         database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     ) as conn:
-        total = await count_pair_at_hour(conn, run_a, run_b, _HOUR)
+        total = await count_pair_at_hour(conn, run_a, run_b, _HOUR, cambridge_city_id)
     assert total == len(segments)
 
 
@@ -328,6 +331,7 @@ async def test_count_pair_at_hour_returns_intersection_size(
 async def test_fetch_pair_at_hour_yields_only_intersection(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     run_a, run_b, segments = seed_two_runs
     async with await psycopg.AsyncConnection.connect(
@@ -335,7 +339,9 @@ async def test_fetch_pair_at_hour_yields_only_intersection(
     ) as conn:
         pairs = [
             pair
-            async for pair in fetch_pair_at_hour(conn, run_a, run_b, _HOUR, limit=100, offset=0)
+            async for pair in fetch_pair_at_hour(
+                conn, run_a, run_b, _HOUR, cambridge_city_id, limit=100, offset=0
+            )
         ]
 
     yielded_ids = {p.segment_id for p in pairs}
@@ -346,6 +352,7 @@ async def test_fetch_pair_at_hour_yields_only_intersection(
 async def test_fetch_pair_at_hour_carries_correct_a_and_b_values(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     """For the i=0 segment: a.composite=0.30, b.composite=0.40."""
     run_a, run_b, segments = seed_two_runs
@@ -354,7 +361,9 @@ async def test_fetch_pair_at_hour_carries_correct_a_and_b_values(
     ) as conn:
         pairs = [
             pair
-            async for pair in fetch_pair_at_hour(conn, run_a, run_b, _HOUR, limit=100, offset=0)
+            async for pair in fetch_pair_at_hour(
+                conn, run_a, run_b, _HOUR, cambridge_city_id, limit=100, offset=0
+            )
         ]
     by_id = {p.segment_id: p for p in pairs}
     first = by_id[segments[0]]
@@ -368,13 +377,24 @@ async def test_fetch_pair_at_hour_carries_correct_a_and_b_values(
 async def test_fetch_pair_pagination_yields_stable_order(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     run_a, run_b, _segments = seed_two_runs
     async with await psycopg.AsyncConnection.connect(
         database_url.replace("postgresql+psycopg://", "postgresql://", 1)
     ) as conn:
-        page_1 = [p async for p in fetch_pair_at_hour(conn, run_a, run_b, _HOUR, limit=2, offset=0)]
-        page_2 = [p async for p in fetch_pair_at_hour(conn, run_a, run_b, _HOUR, limit=2, offset=2)]
+        page_1 = [
+            p
+            async for p in fetch_pair_at_hour(
+                conn, run_a, run_b, _HOUR, cambridge_city_id, limit=2, offset=0
+            )
+        ]
+        page_2 = [
+            p
+            async for p in fetch_pair_at_hour(
+                conn, run_a, run_b, _HOUR, cambridge_city_id, limit=2, offset=2
+            )
+        ]
     assert len(page_1) == 2
     assert len(page_2) == 2
     # All four are distinct segment_ids.
@@ -386,6 +406,7 @@ async def test_fetch_pair_pagination_yields_stable_order(
 async def test_explain_uses_run_id_index(
     seed_two_runs: tuple[UUID, UUID, list[UUID]],
     database_url: str,
+    cambridge_city_id: Any,
 ) -> None:
     """The plan calls for ``EXPLAIN`` to verify the BTREE index on
     ``scoring_run_id`` is used. We assert the plan text mentions either
@@ -408,6 +429,7 @@ async def test_explain_uses_run_id_index(
                 "target_hour": _HOUR,
                 "limit": 100,
                 "offset": 0,
+                "city_id": cambridge_city_id,
             },
         )
         rows = await cur.fetchall()
