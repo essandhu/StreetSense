@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 
 import { CitySelector } from "./components/AppShell/CitySelector";
 import { ModeToggle } from "./components/ModeToggle/ModeToggle";
+import { useActiveCityUrlSync } from "./state/useActiveCityUrlSync";
 import type { RootState } from "./state/store";
 import { DeltaView } from "./views/DeltaView";
 import { MapView } from "./views/MapView";
@@ -15,6 +16,11 @@ const _selectMode = (s: RootState) => s.delta.mode;
 const App = () => {
   const mode = useSelector(_selectMode);
   const [showMethodology, setShowMethodology] = useState(false);
+  // Phase 4b Task 4.5: bidirectional ?city=<slug> URL sync. Mount-time
+  // hydration so a deep-link lands on the right city without a flash;
+  // writer mirrors slice → URL via replaceState (no history bloat);
+  // popstate re-hydrates on browser back / forward.
+  useActiveCityUrlSync();
 
   return (
     <div style={{ position: "absolute", inset: 0 }}>
