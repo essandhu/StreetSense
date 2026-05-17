@@ -22,7 +22,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import type { RunId } from "../domain";
 
-import { tileBaseUrl } from "./api";
+import { currentCitySlug, tileBaseUrl } from "./api";
 
 const LAYER = "public.road_segments_tile_delta";
 
@@ -36,23 +36,31 @@ export type DeltaTileSource = {
 /**
  * Build the delta tile URL given two run IDs. Exported so the URL
  * math stays testable without TanStack Query setup.
+ *
+ * Phase 4b (migration 0019): the delta tile function takes a required
+ * ``city_slug``; ``deltaTileUrl`` accepts it as a third parameter
+ * defaulted to :func:`currentCitySlug` so existing callers don't break.
  */
-export const deltaTileUrl = (runA: RunId, runB: RunId): string => {
+export const deltaTileUrl = (runA: RunId, runB: RunId, citySlug?: string): string => {
   const base = `${tileBaseUrl()}/tiles/${LAYER}/{z}/{x}/{y}.pbf`;
   const params = new URLSearchParams();
   params.set("run_a", String(runA));
   params.set("run_b", String(runB));
+  params.set("city_slug", citySlug ?? currentCitySlug());
   return `${base}?${params.toString()}`;
 };
 
 export const useDeltaTileSource = (runA: RunId | null, runB: RunId | null) => {
+  const citySlug = currentCitySlug();
   const enabled = runA !== null && runB !== null && runA !== runB;
   return useQuery<DeltaTileSource | null>({
-    queryKey: ["delta-tile-source", LAYER, String(runA ?? ""), String(runB ?? "")],
+    // Include citySlug in the key so Phase 4's city switcher
+    // (Task 4.3) re-keys this cache when the user changes city.
+    queryKey: ["delta-tile-source", LAYER, citySlug, String(runA ?? ""), String(runB ?? "")],
     queryFn: () => {
       if (!enabled || runA === null || runB === null) return Promise.resolve(null);
       return Promise.resolve({
-        url: deltaTileUrl(runA, runB),
+        url: deltaTileUrl(runA, runB, citySlug),
         layer: LAYER,
         runA,
         runB,

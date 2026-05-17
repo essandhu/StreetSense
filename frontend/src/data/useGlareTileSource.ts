@@ -23,7 +23,7 @@ import { useSelector } from "react-redux";
 import type { ScrubberState } from "../state/scrubber";
 import type { RootState } from "../state/store";
 
-import { tileBaseUrl } from "./api";
+import { currentCitySlug, tileBaseUrl } from "./api";
 
 const LAYER = "public.road_segments_tile_t";
 
@@ -56,26 +56,38 @@ const buildSnappedIso = (state: ScrubberState): string => {
 /**
  * Build the tile URL given a scrubber state. Exported for unit tests
  * so the URL math is testable without React / Redux setup.
+ *
+ * Phase 4b (migration 0019): the tile function takes a required
+ * ``city_slug`` argument. ``glareTileUrl`` accepts it as a second
+ * parameter (defaulting to :func:`currentCitySlug` so existing call
+ * sites keep working).
  */
-export const glareTileUrl = (state: ScrubberState): string => {
+export const glareTileUrl = (state: ScrubberState, citySlug?: string): string => {
   const iso = buildSnappedIso(state);
-  return `${tileBaseUrl()}/tiles/${LAYER}/{z}/{x}/{y}.pbf?t=${encodeURIComponent(iso)}`;
+  const slug = citySlug ?? currentCitySlug();
+  const params = new URLSearchParams();
+  params.set("t", iso);
+  params.set("city_slug", slug);
+  return `${tileBaseUrl()}/tiles/${LAYER}/{z}/{x}/{y}.pbf?${params.toString()}`;
 };
 
 const scrubberSelector = (state: RootState): ScrubberState => state.scrubber;
 
 export const useGlareTileSource = () => {
   const scrubber = useSelector(scrubberSelector);
+  const citySlug = currentCitySlug();
   const t = buildSnappedIso(scrubber);
 
   return useQuery<GlareTileSource>({
-    queryKey: ["glare-tile-source", LAYER, t],
+    // Include citySlug in the key so Phase 4's city switcher
+    // (Task 4.3) re-keys this cache when the user changes city.
+    queryKey: ["glare-tile-source", LAYER, citySlug, t],
     // The "fetch" is just URL construction — no network. TanStack Query
     // is here for cache + invalidation semantics; the work is in deck.gl
     // re-fetching the tile bytes when the URL changes.
     queryFn: () =>
       Promise.resolve({
-        url: glareTileUrl(scrubber),
+        url: glareTileUrl(scrubber, citySlug),
         layer: LAYER,
         t,
       }),

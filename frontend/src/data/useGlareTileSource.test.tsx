@@ -62,6 +62,19 @@ describe("glareTileUrl", () => {
     const url = glareTileUrl({ dayOfYear: 80, hourOfDay: 25 });
     expect(url).toMatch(/T23%3A00%3A00Z/);
   });
+
+  it("includes the default city_slug=cambridge (Phase 4b migration 0019)", () => {
+    // pg_tileserv's road_segments_tile_t requires city_slug; an unknown
+    // or missing slug returns an empty MVT (the SQL never raises), but
+    // forgetting it in the URL would silently render nothing.
+    const url = glareTileUrl({ dayOfYear: 80, hourOfDay: 11 });
+    expect(url).toMatch(/[?&]city_slug=cambridge/);
+  });
+
+  it("honors an explicit city_slug override (forward compat for Phase 4 selector)", () => {
+    const url = glareTileUrl({ dayOfYear: 80, hourOfDay: 11 }, "phoenix");
+    expect(url).toMatch(/[?&]city_slug=phoenix/);
+  });
 });
 
 describe("useGlareTileSource", () => {

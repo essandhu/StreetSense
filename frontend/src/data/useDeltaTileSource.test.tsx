@@ -30,6 +30,19 @@ describe("deltaTileUrl — pure URL builder", () => {
     expect(url).toContain(`run_a=${RUN_A}`);
     expect(url).toContain(`run_b=${RUN_B}`);
   });
+
+  it("includes the default city_slug=cambridge (Phase 4b migration 0019)", () => {
+    // pg_tileserv's road_segments_tile_delta requires city_slug; an
+    // unknown slug yields an empty MVT, but a missing one is a SQL
+    // arity error.
+    const url = deltaTileUrl(RUN_A, RUN_B);
+    expect(url).toMatch(/[?&]city_slug=cambridge/);
+  });
+
+  it("honors an explicit city_slug override (Phase 4 selector forward compat)", () => {
+    const url = deltaTileUrl(RUN_A, RUN_B, "phoenix");
+    expect(url).toMatch(/[?&]city_slug=phoenix/);
+  });
 });
 
 describe("useDeltaTileSource", () => {
