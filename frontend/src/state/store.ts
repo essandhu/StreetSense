@@ -5,6 +5,7 @@
 
 import { configureStore } from "@reduxjs/toolkit";
 
+import activeCity from "./activeCity";
 import activeLayer from "./activeLayer";
 import delta from "./delta";
 import scrubber from "./scrubber";
@@ -12,7 +13,7 @@ import selectedSegment from "./selectedSegment";
 import viewport from "./viewport";
 
 export const store = configureStore({
-  reducer: { viewport, scrubber, selectedSegment, activeLayer, delta },
+  reducer: { viewport, scrubber, selectedSegment, activeLayer, delta, activeCity },
 });
 
 export type RootState = ReturnType<typeof store.getState>;
