@@ -49,7 +49,9 @@ _PERCEPTION_VERSION = "stand-in-onnx-0.1.0"
 _PROPAGATION_VERSION = "pagerank-diffusion-0.1.0"
 
 
-def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str) -> UUID:
+def _insert_scoring_run(
+    cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str, city_id: Any
+) -> UUID:
     cur.execute(
         """
         INSERT INTO scoring_runs (
@@ -58,11 +60,12 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             osm_snapshot_date,
             imagery_capture_window,
             propagation_algorithm_version,
-            notes
+            notes,
+            city_id
         )
         VALUES (
             %s, %s, %s, daterange(%s, %s, '[)'),
-            %s, %s
+            %s, %s, %s
         )
         RETURNING id
         """,
@@ -74,6 +77,7 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             _IMAGERY_END,
             _PROPAGATION_VERSION,
             notes,
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -81,20 +85,21 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
     return UUID(str(row[0]))
 
 
-def _insert_segment(cur: psycopg.Cursor[Any], offset_idx: int) -> UUID:
+def _insert_segment(cur: psycopg.Cursor[Any], offset_idx: int, city_id: Any) -> UUID:
     base_lon = -71.10 - (offset_idx * 0.001)
     base_lat = 42.36 + (offset_idx * 0.001)
     geom = LineString([(base_lon, base_lat), (base_lon + 0.001, base_lat + 0.001)])
     cur.execute(
         """
-        INSERT INTO road_segments (osm_way_id, geometry, attrs)
-        VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb)
+        INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+        VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
         RETURNING id
         """,
         (
             910_000 + offset_idx,
             wkb.dumps(geom),
             '{"highway": "primary"}',
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -107,6 +112,7 @@ def _insert_score(
     segment_id: UUID,
     run_id: UUID,
     run_timestamp: datetime,
+    city_id: Any,
     *,
     composite_risk: float,
     propagation_uplift: float,
@@ -136,13 +142,15 @@ def _insert_score(
             is_stub_lane_marking,
             is_stub_glare,
             is_stub_junction_complexity,
-            is_stub_historical
+            is_stub_historical,
+            city_id
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, daterange(%s, %s, '[)'),
             %s, %s,
-            false, false, false, false
+            false, false, false, false,
+            %s
         )
         """,
         (
@@ -161,12 +169,15 @@ def _insert_score(
             _IMAGERY_END,
             _PROPAGATION_VERSION,
             propagation_uplift,
+            city_id,
         ),
     )
 
 
 @pytest.fixture
-def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list[UUID]]:
+def seed_two_runs(
+    owner_conn: psycopg.Connection[Any], cambridge_city_id: Any
+) -> tuple[UUID, UUID, list[UUID]]:
     """Two ``scoring_runs`` at noon a week apart with five overlapping segments.
 
     Both runs also seed a non-overlapping segment each, so a correct
@@ -175,17 +186,22 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
     n_segments = 5
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, segment_imagery, road_segments CASCADE")
-        run_a = _insert_scoring_run(cur, _RUN_A_TS, notes="task 2.4 delta route — A")
-        run_b = _insert_scoring_run(cur, _RUN_B_TS, notes="task 2.4 delta route — B")
+        run_a = _insert_scoring_run(
+            cur, _RUN_A_TS, notes="task 2.4 delta route — A", city_id=cambridge_city_id
+        )
+        run_b = _insert_scoring_run(
+            cur, _RUN_B_TS, notes="task 2.4 delta route — B", city_id=cambridge_city_id
+        )
         segment_ids: list[UUID] = []
         for i in range(n_segments):
-            sid = _insert_segment(cur, i)
+            sid = _insert_segment(cur, i, cambridge_city_id)
             segment_ids.append(sid)
             _insert_score(
                 cur,
                 sid,
                 run_a,
                 _RUN_A_TS,
+                cambridge_city_id,
                 composite_risk=0.30 + i * 0.05,
                 propagation_uplift=0.05 + i * 0.01,
                 sub_lane=0.20 + i * 0.05,
@@ -199,6 +215,7 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
                 sid,
                 run_b,
                 _RUN_B_TS,
+                cambridge_city_id,
                 composite_risk=0.40 + i * 0.05,  # +0.10 from run_a
                 propagation_uplift=0.08 + i * 0.01,  # +0.03
                 sub_lane=0.25 + i * 0.05,  # +0.05
@@ -208,12 +225,13 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
                 confidence=0.90,
             )
         # Non-overlapping segments — must NOT appear in deltas.
-        only_a = _insert_segment(cur, 100)
+        only_a = _insert_segment(cur, 100, cambridge_city_id)
         _insert_score(
             cur,
             only_a,
             run_a,
             _RUN_A_TS,
+            cambridge_city_id,
             composite_risk=0.1,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -221,12 +239,13 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
             sub_junction=0.1,
             sub_historical=0.1,
         )
-        only_b = _insert_segment(cur, 101)
+        only_b = _insert_segment(cur, 101, cambridge_city_id)
         _insert_score(
             cur,
             only_b,
             run_b,
             _RUN_B_TS,
+            cambridge_city_id,
             composite_risk=0.1,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -241,6 +260,7 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
 @pytest.fixture
 def seed_two_runs_no_overlap(
     owner_conn: psycopg.Connection[Any],
+    cambridge_city_id: Any,
 ) -> tuple[UUID, UUID]:
     """Two ``scoring_runs`` at noon with disjoint segment sets.
 
@@ -249,14 +269,19 @@ def seed_two_runs_no_overlap(
     """
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, segment_imagery, road_segments CASCADE")
-        run_a = _insert_scoring_run(cur, _RUN_A_TS, notes="task 2.4 empty — A")
-        run_b = _insert_scoring_run(cur, _RUN_B_TS, notes="task 2.4 empty — B")
-        a_sid = _insert_segment(cur, 50)
+        run_a = _insert_scoring_run(
+            cur, _RUN_A_TS, notes="task 2.4 empty — A", city_id=cambridge_city_id
+        )
+        run_b = _insert_scoring_run(
+            cur, _RUN_B_TS, notes="task 2.4 empty — B", city_id=cambridge_city_id
+        )
+        a_sid = _insert_segment(cur, 50, cambridge_city_id)
         _insert_score(
             cur,
             a_sid,
             run_a,
             _RUN_A_TS,
+            cambridge_city_id,
             composite_risk=0.2,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -264,12 +289,13 @@ def seed_two_runs_no_overlap(
             sub_junction=0.1,
             sub_historical=0.1,
         )
-        b_sid = _insert_segment(cur, 51)
+        b_sid = _insert_segment(cur, 51, cambridge_city_id)
         _insert_score(
             cur,
             b_sid,
             run_b,
             _RUN_B_TS,
+            cambridge_city_id,
             composite_risk=0.3,
             propagation_uplift=0.0,
             sub_lane=0.1,

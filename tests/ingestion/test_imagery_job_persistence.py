@@ -178,9 +178,7 @@ def preloaded_provider(seeded_segment: UUID) -> _PreloadedProvider:
     return _PreloadedProvider(head, bytes_by_id)
 
 
-def _run_ingest(
-    database_url: str, bucket: str, provider: _PreloadedProvider, city_id: Any
-) -> int:
+def _run_ingest(database_url: str, bucket: str, provider: _PreloadedProvider, city_id: Any) -> int:
     summary = ingest_imagery(
         database_url=database_url,
         provider=provider,

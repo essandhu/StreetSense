@@ -28,7 +28,7 @@ async def api_client(database_url: str) -> AsyncIterator[AsyncClient]:
 
 
 @pytest.fixture
-def seed_segment(owner_conn: psycopg.Connection[Any]) -> UUID:
+def seed_segment(owner_conn: psycopg.Connection[Any], cambridge_city_id: Any) -> UUID:
     """Insert one road_segments row and return its UUID.
 
     Cleans up first so the fixture can be requested by every test in the
@@ -39,14 +39,15 @@ def seed_segment(owner_conn: psycopg.Connection[Any]) -> UUID:
         cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
         cur.execute(
             """
-            INSERT INTO road_segments (osm_way_id, geometry, attrs)
-            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb)
+            INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
             RETURNING id
             """,
             (
                 999_001,
                 wkb.dumps(geom),
                 '{"highway": "primary", "name": "Fixture A"}',
+                cambridge_city_id,
             ),
         )
         row = cur.fetchone()

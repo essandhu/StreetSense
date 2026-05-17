@@ -51,9 +51,7 @@ def test_get_city_id_by_slug_returns_cambridge_uuid(
     "slug",
     ["phoenix", "san-francisco", "austin", "los-angeles"],
 )
-def test_get_city_id_by_slug_returns_curated_uuids(
-    database_url: str, slug: str
-) -> None:
+def test_get_city_id_by_slug_returns_curated_uuids(database_url: str, slug: str) -> None:
     city_id = get_city_id_by_slug(database_url, slug)
     assert isinstance(city_id, UUID)
 

@@ -81,9 +81,7 @@ def test_persists_segments_with_geometry_in_4326(
 def test_attrs_preserved_as_jsonb(
     owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
 ) -> None:
-    persist_road_segments(
-        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id
-    )
+    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id)
 
     with owner_conn.cursor() as cur:
         cur.execute("SELECT osm_way_id, attrs FROM road_segments ORDER BY osm_way_id")
@@ -116,12 +114,8 @@ def test_data_sources_row_updated_with_last_ingested_at(
 def test_reingest_is_idempotent_on_osm_way_id(
     owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
 ) -> None:
-    persist_road_segments(
-        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id
-    )
-    persist_road_segments(
-        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id
-    )
+    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id)
+    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id)
 
     with owner_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM road_segments")

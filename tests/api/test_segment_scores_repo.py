@@ -44,7 +44,9 @@ _RUN_A_TS = datetime(2026, 5, 8, _HOUR, 0, 0, tzinfo=UTC)
 _RUN_B_TS = datetime(2026, 5, 15, _HOUR, 0, 0, tzinfo=UTC)
 
 
-def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str) -> UUID:
+def _insert_scoring_run(
+    cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str, city_id: Any
+) -> UUID:
     cur.execute(
         """
         INSERT INTO scoring_runs (
@@ -53,11 +55,12 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             osm_snapshot_date,
             imagery_capture_window,
             propagation_algorithm_version,
-            notes
+            notes,
+            city_id
         )
         VALUES (
             %s, %s, %s, daterange(%s, %s, '[)'),
-            %s, %s
+            %s, %s, %s
         )
         RETURNING id
         """,
@@ -69,6 +72,7 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             date(2026, 5, 1),
             "pagerank-diffusion-0.1.0",
             notes,
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -76,21 +80,22 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
     return UUID(str(row[0]))
 
 
-def _insert_segment(cur: psycopg.Cursor[Any], offset_idx: int) -> UUID:
+def _insert_segment(cur: psycopg.Cursor[Any], offset_idx: int, city_id: Any) -> UUID:
     """Insert one road_segments row at a deterministic location."""
     base_lon = -71.10 - (offset_idx * 0.001)
     base_lat = 42.36 + (offset_idx * 0.001)
     geom = LineString([(base_lon, base_lat), (base_lon + 0.001, base_lat + 0.001)])
     cur.execute(
         """
-        INSERT INTO road_segments (osm_way_id, geometry, attrs)
-        VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb)
+        INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+        VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
         RETURNING id
         """,
         (
             900_000 + offset_idx,
             wkb.dumps(geom),
             '{"highway": "primary"}',
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -103,6 +108,7 @@ def _insert_score(
     segment_id: UUID,
     run_id: UUID,
     run_timestamp: datetime,
+    city_id: Any,
     *,
     composite_risk: float,
     propagation_uplift: float,
@@ -132,13 +138,15 @@ def _insert_score(
             is_stub_lane_marking,
             is_stub_glare,
             is_stub_junction_complexity,
-            is_stub_historical
+            is_stub_historical,
+            city_id
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, daterange(%s, %s, '[)'),
             %s, %s,
-            false, false, false, false
+            false, false, false, false,
+            %s
         )
         """,
         (
@@ -157,12 +165,15 @@ def _insert_score(
             date(2026, 5, 1),
             "pagerank-diffusion-0.1.0",
             propagation_uplift,
+            city_id,
         ),
     )
 
 
 @pytest.fixture
-def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list[UUID]]:
+def seed_two_runs(
+    owner_conn: psycopg.Connection[Any], cambridge_city_id: Any
+) -> tuple[UUID, UUID, list[UUID]]:
     """Insert two scoring_runs and N segments scored in both at the noon hour.
 
     Returns ``(run_a_id, run_b_id, [segment_ids])``.
@@ -170,11 +181,15 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
     n_segments = 5
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, road_segments CASCADE")
-        run_a = _insert_scoring_run(cur, _RUN_A_TS, notes="phase-5 delta repo test run A")
-        run_b = _insert_scoring_run(cur, _RUN_B_TS, notes="phase-5 delta repo test run B")
+        run_a = _insert_scoring_run(
+            cur, _RUN_A_TS, notes="phase-5 delta repo test run A", city_id=cambridge_city_id
+        )
+        run_b = _insert_scoring_run(
+            cur, _RUN_B_TS, notes="phase-5 delta repo test run B", city_id=cambridge_city_id
+        )
         segment_ids: list[UUID] = []
         for i in range(n_segments):
-            sid = _insert_segment(cur, i)
+            sid = _insert_segment(cur, i, cambridge_city_id)
             segment_ids.append(sid)
             # Insert one row per segment at noon for both runs.
             _insert_score(
@@ -182,6 +197,7 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
                 sid,
                 run_a,
                 _RUN_A_TS,
+                cambridge_city_id,
                 composite_risk=0.30 + i * 0.05,
                 propagation_uplift=0.05 + i * 0.01,
                 sub_lane=0.20 + i * 0.05,
@@ -194,6 +210,7 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
                 sid,
                 run_b,
                 _RUN_B_TS,
+                cambridge_city_id,
                 composite_risk=0.40 + i * 0.05,  # +0.10 from run A
                 propagation_uplift=0.08 + i * 0.01,  # +0.03
                 sub_lane=0.25 + i * 0.05,  # +0.05
@@ -203,12 +220,13 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
             )
         # Also seed one segment present in run_a only and one in run_b only —
         # these must NOT appear in fetch_pair output.
-        only_a = _insert_segment(cur, 100)
+        only_a = _insert_segment(cur, 100, cambridge_city_id)
         _insert_score(
             cur,
             only_a,
             run_a,
             _RUN_A_TS,
+            cambridge_city_id,
             composite_risk=0.1,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -216,12 +234,13 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
             sub_junction=0.1,
             sub_historical=0.1,
         )
-        only_b = _insert_segment(cur, 101)
+        only_b = _insert_segment(cur, 101, cambridge_city_id)
         _insert_score(
             cur,
             only_b,
             run_b,
             _RUN_B_TS,
+            cambridge_city_id,
             composite_risk=0.1,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -231,12 +250,13 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
         )
         # And one segment scored at a different hour (NOT noon) in run_a, to
         # confirm the hour filter excludes it.
-        off_hour = _insert_segment(cur, 200)
+        off_hour = _insert_segment(cur, 200, cambridge_city_id)
         _insert_score(
             cur,
             off_hour,
             run_a,
             _RUN_A_TS + timedelta(hours=1),
+            cambridge_city_id,
             composite_risk=0.1,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -249,6 +269,7 @@ def seed_two_runs(owner_conn: psycopg.Connection[Any]) -> tuple[UUID, UUID, list
             off_hour,
             run_b,
             _RUN_B_TS + timedelta(hours=1),
+            cambridge_city_id,
             composite_risk=0.1,
             propagation_uplift=0.0,
             sub_lane=0.1,

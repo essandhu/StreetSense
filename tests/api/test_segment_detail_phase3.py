@@ -31,6 +31,7 @@ pytestmark = pytest.mark.integration
 def _seed_real_score_for(
     owner_conn: psycopg.Connection[Any],
     segment_id: UUID,
+    city_id: Any,
     *,
     composite: float = 0.42,
     scalar_confidence: float = 0.8,
@@ -46,7 +47,8 @@ def _seed_real_score_for(
                 osm_snapshot_date,
                 imagery_capture_window,
                 propagation_algorithm_version,
-                notes
+                notes,
+                city_id
             )
             VALUES (
                 gen_random_uuid(),
@@ -55,10 +57,12 @@ def _seed_real_score_for(
                 '2026-05-13',
                 '[2025-06-01,2025-09-01)'::daterange,
                 'none-phase-2',
-                'phase3-api-test'
+                'phase3-api-test',
+                %s
             )
             RETURNING id, scoring_run_timestamp
             """,
+            (city_id,),
         )
         row = cur.fetchone()
         assert row is not None
@@ -75,7 +79,8 @@ def _seed_real_score_for(
                 is_stub_junction_complexity, is_stub_historical,
                 scoring_run_id, scoring_run_timestamp,
                 perception_model_version, osm_snapshot_date,
-                imagery_capture_window, propagation_algorithm_version
+                imagery_capture_window, propagation_algorithm_version,
+                city_id
             )
             VALUES (
                 %s, %s, 0.0,
@@ -86,16 +91,17 @@ def _seed_real_score_for(
                 true, true,
                 %s, %s,
                 'lane-marking-standin-deadbeef', '2026-05-13',
-                '[2025-06-01,2025-09-01)'::daterange, 'none-phase-2'
+                '[2025-06-01,2025-09-01)'::daterange, 'none-phase-2',
+                %s
             )
             """,
-            (segment_id, composite, scalar_confidence, run_id, run_ts),
+            (segment_id, composite, scalar_confidence, run_id, run_ts, city_id),
         )
     owner_conn.commit()
 
 
 def _seed_imagery_for(
-    owner_conn: psycopg.Connection[Any], segment_id: UUID, *, count: int = 3
+    owner_conn: psycopg.Connection[Any], segment_id: UUID, city_id: Any, *, count: int = 3
 ) -> None:
     """Insert N segment_imagery rows + corresponding MinIO objects."""
     import io
@@ -143,9 +149,9 @@ def _seed_imagery_for(
                 """
                 INSERT INTO segment_imagery (
                     segment_id, provider, provider_image_id, sample_index,
-                    capture_date, heading_deg, camera_params, object_key
+                    capture_date, heading_deg, camera_params, object_key, city_id
                 )
-                VALUES (%s, 'mapillary', %s, %s, %s, %s, %s, %s)
+                VALUES (%s, 'mapillary', %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (provider, provider_image_id, segment_id) DO NOTHING
                 """,
                 (
@@ -156,6 +162,7 @@ def _seed_imagery_for(
                     90.0,
                     Jsonb({"thumb_1024_url": f"https://example/{provider_image_id}"}),
                     object_key,
+                    city_id,
                 ),
             )
     owner_conn.commit()
@@ -173,9 +180,10 @@ async def test_confidence_is_object_with_limiter_and_value(
     api_client: AsyncClient,
     owner_conn: psycopg.Connection[Any],
     seed_segment: UUID,
+    cambridge_city_id: Any,
 ) -> None:
-    _seed_real_score_for(owner_conn, seed_segment)
-    _seed_imagery_for(owner_conn, seed_segment, count=3)
+    _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
+    _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=3)
 
     resp = await api_client.get(f"/segments/{seed_segment}")
     assert resp.status_code == 200, resp.text
@@ -195,9 +203,10 @@ async def test_imagery_array_with_pre_signed_urls(
     api_client: AsyncClient,
     owner_conn: psycopg.Connection[Any],
     seed_segment: UUID,
+    cambridge_city_id: Any,
 ) -> None:
-    _seed_real_score_for(owner_conn, seed_segment)
-    _seed_imagery_for(owner_conn, seed_segment, count=3)
+    _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
+    _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=3)
 
     resp = await api_client.get(f"/segments/{seed_segment}")
     body = resp.json()
@@ -224,9 +233,10 @@ async def test_lane_marking_metadata_carries_model_uncertainty(
     api_client: AsyncClient,
     owner_conn: psycopg.Connection[Any],
     seed_segment: UUID,
+    cambridge_city_id: Any,
 ) -> None:
-    _seed_real_score_for(owner_conn, seed_segment)
-    _seed_imagery_for(owner_conn, seed_segment, count=2)
+    _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
+    _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=2)
 
     resp = await api_client.get(f"/segments/{seed_segment}")
     body = resp.json()
@@ -241,9 +251,10 @@ async def test_no_imagery_yields_coverage_limited_confidence(
     api_client: AsyncClient,
     owner_conn: psycopg.Connection[Any],
     seed_segment: UUID,
+    cambridge_city_id: Any,
 ) -> None:
     """A segment with zero `segment_imagery` rows → confidence.limiter == 'coverage'."""
-    _seed_real_score_for(owner_conn, seed_segment)
+    _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
     # No _seed_imagery_for call.
 
     resp = await api_client.get(f"/segments/{seed_segment}")
@@ -258,10 +269,11 @@ async def test_t_parameter_still_snaps(
     api_client: AsyncClient,
     owner_conn: psycopg.Connection[Any],
     seed_segment: UUID,
+    cambridge_city_id: Any,
 ) -> None:
     """Regression: Phase 2's t=... parameter still works in API 3.0."""
-    _seed_real_score_for(owner_conn, seed_segment)
-    _seed_imagery_for(owner_conn, seed_segment, count=1)
+    _seed_real_score_for(owner_conn, seed_segment, cambridge_city_id)
+    _seed_imagery_for(owner_conn, seed_segment, cambridge_city_id, count=1)
 
     resp = await api_client.get(
         f"/segments/{seed_segment}",

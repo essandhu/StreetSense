@@ -74,7 +74,9 @@ def _lonlat_to_tile(lon: float, lat: float, zoom: int) -> tuple[int, int]:
     return x, y
 
 
-def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str) -> UUID:
+def _insert_scoring_run(
+    cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str, city_id: Any
+) -> UUID:
     cur.execute(
         """
         INSERT INTO scoring_runs (
@@ -83,10 +85,11 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             osm_snapshot_date,
             imagery_capture_window,
             propagation_algorithm_version,
-            notes
+            notes,
+            city_id
         )
         VALUES (
-            %s, %s, %s, daterange(%s, %s, '[)'), %s, %s
+            %s, %s, %s, daterange(%s, %s, '[)'), %s, %s, %s
         )
         RETURNING id
         """,
@@ -98,6 +101,7 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             _IMAGERY_END,
             _PROPAGATION_VERSION,
             notes,
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -105,20 +109,21 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
     return UUID(str(row[0]))
 
 
-def _insert_segment(cur: psycopg.Cursor[Any], offset_idx: int) -> UUID:
+def _insert_segment(cur: psycopg.Cursor[Any], offset_idx: int, city_id: Any) -> UUID:
     base_lon = _FIXTURE_LON - (offset_idx * 0.001)
     base_lat = _FIXTURE_LAT + (offset_idx * 0.001)
     geom = LineString([(base_lon, base_lat), (base_lon + 0.001, base_lat + 0.001)])
     cur.execute(
         """
-        INSERT INTO road_segments (osm_way_id, geometry, attrs)
-        VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb)
+        INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+        VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), %s::jsonb, %s)
         RETURNING id
         """,
         (
             920_000 + offset_idx,
             wkb.dumps(geom),
             '{"highway": "primary"}',
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -131,6 +136,7 @@ def _insert_score(
     segment_id: UUID,
     run_id: UUID,
     run_timestamp: datetime,
+    city_id: Any,
     *,
     composite_risk: float,
     propagation_uplift: float,
@@ -160,13 +166,15 @@ def _insert_score(
             is_stub_lane_marking,
             is_stub_glare,
             is_stub_junction_complexity,
-            is_stub_historical
+            is_stub_historical,
+            city_id
         )
         VALUES (
             %s, %s, %s, %s, %s, %s, %s,
             %s, %s, %s, %s, daterange(%s, %s, '[)'),
             %s, %s,
-            false, false, false, false
+            false, false, false, false,
+            %s
         )
         """,
         (
@@ -185,6 +193,7 @@ def _insert_score(
             _IMAGERY_END,
             _PROPAGATION_VERSION,
             propagation_uplift,
+            city_id,
         ),
     )
 
@@ -192,6 +201,7 @@ def _insert_score(
 @pytest.fixture
 def seed_delta_runs(
     owner_conn: psycopg.Connection[Any],
+    cambridge_city_id: Any,
 ) -> tuple[UUID, UUID, UUID]:
     """Two scoring_runs at noon a week apart sharing one segment.
 
@@ -203,15 +213,20 @@ def seed_delta_runs(
     """
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs, segment_imagery, road_segments CASCADE")
-        run_a = _insert_scoring_run(cur, _RUN_A_TS, notes="task 2.6 tile delta — A")
-        run_b = _insert_scoring_run(cur, _RUN_B_TS, notes="task 2.6 tile delta — B")
+        run_a = _insert_scoring_run(
+            cur, _RUN_A_TS, notes="task 2.6 tile delta — A", city_id=cambridge_city_id
+        )
+        run_b = _insert_scoring_run(
+            cur, _RUN_B_TS, notes="task 2.6 tile delta — B", city_id=cambridge_city_id
+        )
         # Shared segment at noon both runs.
-        shared = _insert_segment(cur, 0)
+        shared = _insert_segment(cur, 0, cambridge_city_id)
         _insert_score(
             cur,
             shared,
             run_a,
             _RUN_A_TS,
+            cambridge_city_id,
             composite_risk=0.30,
             propagation_uplift=0.05,
             sub_lane=0.20,
@@ -225,6 +240,7 @@ def seed_delta_runs(
             shared,
             run_b,
             _RUN_B_TS,
+            cambridge_city_id,
             composite_risk=0.40,  # +0.10
             propagation_uplift=0.08,  # +0.03
             sub_lane=0.25,  # +0.05
@@ -234,12 +250,13 @@ def seed_delta_runs(
             confidence=0.90,
         )
         # Run-a-only segment (must drop).
-        only_a = _insert_segment(cur, 1)
+        only_a = _insert_segment(cur, 1, cambridge_city_id)
         _insert_score(
             cur,
             only_a,
             run_a,
             _RUN_A_TS,
+            cambridge_city_id,
             composite_risk=0.5,
             propagation_uplift=0.0,
             sub_lane=0.5,
@@ -248,12 +265,13 @@ def seed_delta_runs(
             sub_historical=0.0,
         )
         # Off-hour segment in both runs (1 PM, not noon).
-        off_hour = _insert_segment(cur, 2)
+        off_hour = _insert_segment(cur, 2, cambridge_city_id)
         _insert_score(
             cur,
             off_hour,
             run_a,
             _RUN_A_TS + timedelta(hours=1),
+            cambridge_city_id,
             composite_risk=0.2,
             propagation_uplift=0.0,
             sub_lane=0.1,
@@ -266,6 +284,7 @@ def seed_delta_runs(
             off_hour,
             run_b,
             _RUN_B_TS + timedelta(hours=1),
+            cambridge_city_id,
             composite_risk=0.3,
             propagation_uplift=0.0,
             sub_lane=0.1,

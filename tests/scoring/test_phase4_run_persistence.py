@@ -111,18 +111,21 @@ def seeded_database(
     with owner_conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO incidents (provider, provider_incident_id, geom, incident_at, severity, metadata)
+            INSERT INTO incidents (
+                provider, provider_incident_id, geom, incident_at, severity, metadata, city_id
+            )
             VALUES
               ('test-fixture', 'inc-1',
                  ST_SetSRID(ST_MakePoint(-71.1050, 42.3702), 4326),
-                 '2025-06-20T12:00:00Z', 'injury', '{}'::jsonb),
+                 '2025-06-20T12:00:00Z', 'injury', '{}'::jsonb, %(city_id)s),
               ('test-fixture', 'inc-2',
                  ST_SetSRID(ST_MakePoint(-71.1051, 42.3698), 4326),
-                 '2025-05-21T12:00:00Z', 'fatal',  '{}'::jsonb),
+                 '2025-05-21T12:00:00Z', 'fatal',  '{}'::jsonb, %(city_id)s),
               ('test-fixture', 'inc-3',
                  ST_SetSRID(ST_MakePoint(-71.1049, 42.3700), 4326),
-                 '2025-04-21T12:00:00Z', 'property_damage_only', '{}'::jsonb)
+                 '2025-04-21T12:00:00Z', 'property_damage_only', '{}'::jsonb, %(city_id)s)
             """,
+            {"city_id": cambridge_city_id},
         )
     owner_conn.commit()
     return database_url

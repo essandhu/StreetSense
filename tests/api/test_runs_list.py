@@ -44,7 +44,13 @@ _PERCEPTION_VERSION = "stand-in-onnx-0.1.0"
 _PROPAGATION_VERSION = "pagerank-diffusion-0.1.0"
 
 
-def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, notes: str) -> UUID:
+def _insert_scoring_run(
+    cur: psycopg.Cursor[Any],
+    run_timestamp: datetime,
+    *,
+    notes: str,
+    city_id: Any,
+) -> UUID:
     cur.execute(
         """
         INSERT INTO scoring_runs (
@@ -53,11 +59,12 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             osm_snapshot_date,
             imagery_capture_window,
             propagation_algorithm_version,
-            notes
+            notes,
+            city_id
         )
         VALUES (
             %s, %s, %s, daterange(%s, %s, '[)'),
-            %s, %s
+            %s, %s, %s
         )
         RETURNING id
         """,
@@ -69,6 +76,7 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
             _IMAGERY_END,
             _PROPAGATION_VERSION,
             notes,
+            city_id,
         ),
     )
     row = cur.fetchone()
@@ -79,13 +87,18 @@ def _insert_scoring_run(cur: psycopg.Cursor[Any], run_timestamp: datetime, *, no
 @pytest.fixture
 def seed_two_runs_for_listing(
     owner_conn: psycopg.Connection[Any],
+    cambridge_city_id: Any,
 ) -> tuple[UUID, UUID]:
     """Insert two scoring runs at distinct timestamps. Returns ``(old_id, new_id)``."""
     with owner_conn.cursor() as cur:
         cur.execute("TRUNCATE segment_scores, scoring_runs CASCADE")
         # Insert OLD first so DB physical-order doesn't trivially match expected order.
-        run_old = _insert_scoring_run(cur, _RUN_OLD_TS, notes="task 3.3 list — old")
-        run_new = _insert_scoring_run(cur, _RUN_NEW_TS, notes="task 3.3 list — new")
+        run_old = _insert_scoring_run(
+            cur, _RUN_OLD_TS, notes="task 3.3 list — old", city_id=cambridge_city_id
+        )
+        run_new = _insert_scoring_run(
+            cur, _RUN_NEW_TS, notes="task 3.3 list — new", city_id=cambridge_city_id
+        )
     owner_conn.commit()
     return run_old, run_new
 
