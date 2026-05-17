@@ -95,8 +95,16 @@ def _clean_tables(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 @pytest.fixture
-def seeded_database(database_url: str, owner_conn: psycopg.Connection[Any]) -> str:
-    persist_road_segments(database_url, FIXTURE_SEGMENTS, FIXTURE_METADATA, source_name="osm")
+def seeded_database(
+    database_url: str, owner_conn: psycopg.Connection[Any], cambridge_city_id: Any
+) -> str:
+    persist_road_segments(
+        database_url,
+        FIXTURE_SEGMENTS,
+        FIXTURE_METADATA,
+        source_name="osm",
+        city_id=cambridge_city_id,
+    )
     # Drop 3 synthetic incidents near the shared junction so the
     # historical scorer has signal. Using INSERT directly (not the
     # provider) because the test owns deterministic fixture data.

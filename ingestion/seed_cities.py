@@ -26,6 +26,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import structlog
@@ -196,4 +197,51 @@ def seed_cities(
     return summary
 
 
-__all__ = ["SeedSummary", "seed_cities"]
+class UnknownCityError(ValueError):
+    """Raised when a slug does not resolve to a row in the cities table.
+
+    Carries the list of valid slugs so the CLI can echo them in the
+    error message — matches the Phase 4b spec API behavior (unknown
+    slug → 404 with valid slugs listed).
+    """
+
+    def __init__(self, slug: str, valid_slugs: list[str]) -> None:
+        super().__init__(
+            f"Unknown city slug {slug!r}. Valid slugs: {sorted(valid_slugs)!r}. "
+            "Run `make seed-cities` if the YAML exists but the table is unseeded."
+        )
+        self.slug = slug
+        self.valid_slugs = valid_slugs
+
+
+def get_city_id_by_slug(database_url: str, slug: str) -> UUID:
+    """Look up a city's UUID by its slug.
+
+    The single source of truth for translating the user-facing `--city
+    <slug>` argument into the `city_id` value the writers persist. Used
+    by every Phase 2-refactored writer + scoring runner.
+
+    Args:
+        database_url: SQLAlchemy- or psycopg-style DSN.
+        slug: Lowercase city identifier (e.g., ``"cambridge"``).
+
+    Returns:
+        The ``cities.id`` UUID for the given slug.
+
+    Raises:
+        UnknownCityError: if the slug does not resolve to a cities row.
+            Carries the list of valid slugs so callers can render a
+            helpful error.
+    """
+    dsn = _psycopg_dsn(database_url)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM cities WHERE slug = %s", (slug,))
+        row = cur.fetchone()
+        if row is not None:
+            return UUID(str(row[0]))
+        cur.execute("SELECT slug FROM cities ORDER BY slug")
+        valid = [r[0] for r in cur.fetchall()]
+    raise UnknownCityError(slug, valid)
+
+
+__all__ = ["SeedSummary", "UnknownCityError", "get_city_id_by_slug", "seed_cities"]

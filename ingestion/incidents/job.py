@@ -22,6 +22,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any
+from uuid import UUID
 
 import psycopg
 import structlog
@@ -39,7 +40,8 @@ INSERT INTO incidents (
     geom,
     incident_at,
     severity,
-    metadata
+    metadata,
+    city_id
 )
 VALUES (
     %(provider)s,
@@ -47,7 +49,8 @@ VALUES (
     ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326),
     %(incident_at)s,
     %(severity)s,
-    %(metadata)s
+    %(metadata)s,
+    %(city_id)s
 )
 ON CONFLICT (provider, provider_incident_id) DO NOTHING
 """
@@ -101,8 +104,16 @@ def ingest_incidents(
     provider: IncidentProvider,
     bbox: BoundingBox,
     config: IncidentIngestConfig | None = None,
+    city_id: UUID,
 ) -> IncidentIngestSummary:
-    """Run the incident ingestion job end-to-end. Returns a summary."""
+    """Run the incident ingestion job end-to-end. Returns a summary.
+
+    Phase 4b: ``city_id`` is required. Every persisted ``incidents``
+    row carries it so per-city historical-correlation queries are
+    cheap and the explainability invariant (CLAUDE.md) holds when the
+    sub-score is honestly-null for cities without state-level
+    incident coverage.
+    """
     cfg = config or IncidentIngestConfig()
     dsn = _psycopg_dsn(database_url)
     start = time.perf_counter()
@@ -170,6 +181,7 @@ def ingest_incidents(
                     "incident_at": incident_at,
                     "severity": record.severity.value,
                     "metadata": Jsonb(record.metadata),
+                    "city_id": city_id,
                 }
             )
             if len(batch) >= cfg.insert_batch_size:

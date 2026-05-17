@@ -51,6 +51,7 @@ _LOAD_SEGMENTS_SQL = """
 SELECT id, ST_AsBinary(geometry) AS wkb
 FROM road_segments
 WHERE geometry IS NOT NULL
+  AND city_id = %(city_id)s
 ORDER BY id
 """
 
@@ -63,11 +64,12 @@ WHERE provider = %(provider)s
 _INSERT_REF_SQL = """
 INSERT INTO segment_imagery (
     segment_id, provider, provider_image_id, sample_index,
-    capture_date, heading_deg, camera_params, object_key
+    capture_date, heading_deg, camera_params, object_key, city_id
 )
 VALUES (
     %(segment_id)s, %(provider)s, %(provider_image_id)s, %(sample_index)s,
-    %(capture_date)s, %(heading_deg)s, %(camera_params)s, %(object_key)s
+    %(capture_date)s, %(heading_deg)s, %(camera_params)s, %(object_key)s,
+    %(city_id)s
 )
 ON CONFLICT (provider, provider_image_id, segment_id) DO NOTHING
 """
@@ -214,8 +216,16 @@ def ingest_imagery(
     provider: ImageryProvider,
     object_store: _MinIOClient | None = None,
     config: ImageryIngestConfig | None = None,
+    city_id: UUID,
 ) -> ImageryIngestSummary:
-    """Run the imagery ingestion job end-to-end. Returns a summary."""
+    """Run the imagery ingestion job end-to-end. Returns a summary.
+
+    Phase 4b: ``city_id`` is required. The segment query filters
+    ``road_segments.city_id = %s`` so the imagery job scopes to a
+    single city; every ``segment_imagery`` row is tagged with the
+    same ``city_id`` (the join into road_segments would carry it
+    indirectly, but the explicit column is the load-bearing FK).
+    """
     cfg = config or ImageryIngestConfig()
     store = object_store or _MinIOClient()
     dsn = database_url.replace("postgresql+psycopg://", "postgresql://", 1)
@@ -231,7 +241,7 @@ def ingest_imagery(
         # Load segments + existing references in one transaction so the
         # job sees a consistent snapshot.
         with conn.cursor() as cur:
-            cur.execute(_LOAD_SEGMENTS_SQL)
+            cur.execute(_LOAD_SEGMENTS_SQL, {"city_id": city_id})
             segments: list[tuple[UUID, bytes]] = list(cur.fetchall())
             if cfg.max_segments is not None:
                 segments = segments[: cfg.max_segments]
@@ -317,6 +327,7 @@ def ingest_imagery(
                     "capture_date": reference.capture_date,
                     "heading_deg": reference.heading_deg,
                     "camera_params": Jsonb(reference.camera_params),
+                    "city_id": city_id,
                     "object_key": full_object_key,
                 }
             )

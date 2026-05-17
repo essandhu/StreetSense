@@ -80,9 +80,15 @@ def _clean_tables(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 @pytest.fixture
-def seeded_database(database_url: str) -> str:
+def seeded_database(database_url: str, cambridge_city_id: Any) -> str:
     """Insert the fixture segments and yield the DSN."""
-    persist_road_segments(database_url, FIXTURE_SEGMENTS, FIXTURE_METADATA, source_name="osm")
+    persist_road_segments(
+        database_url,
+        FIXTURE_SEGMENTS,
+        FIXTURE_METADATA,
+        source_name="osm",
+        city_id=cambridge_city_id,
+    )
     return database_url
 
 

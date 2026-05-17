@@ -55,8 +55,12 @@ def _clean(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 @pytest.fixture
-def segment_id(database_url: str, owner_conn: psycopg.Connection[Any]) -> str:
-    persist_road_segments(database_url, SEGMENTS, METADATA, source_name="osm")
+def segment_id(
+    database_url: str, owner_conn: psycopg.Connection[Any], cambridge_city_id: Any
+) -> str:
+    persist_road_segments(
+        database_url, SEGMENTS, METADATA, source_name="osm", city_id=cambridge_city_id
+    )
     with owner_conn.cursor() as cur:
         cur.execute("SELECT id FROM road_segments WHERE osm_way_id = 99201")
         row = cur.fetchone()

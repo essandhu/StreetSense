@@ -43,7 +43,7 @@ from ingestion.incidents.massdot_impact import MassDOTImpactProvider
 from ingestion.incidents.provider import BoundingBox
 from ingestion.osm.osmium_adapter import GeofabrikOSMSource
 from ingestion.persist import persist_road_segments
-from ingestion.seed_cities import seed_cities
+from ingestion.seed_cities import get_city_id_by_slug, seed_cities
 
 log = structlog.get_logger(__name__)
 
@@ -62,8 +62,11 @@ def cmd_seed(city: str) -> int:
     _configure_logging()
     config = load_city(city)
     database_url = get_database_url()
+    city_id = get_city_id_by_slug(database_url, config.slug)
 
-    log.info("seed.start", city=config.name, bbox=list(config.bbox))
+    log.info(
+        "seed.start", city=config.slug, city_id=str(city_id), bbox=list(config.bbox)
+    )
 
     source = GeofabrikOSMSource(url=config.geofabrik_extract_url)
     cache_path = config.resolved_cache_path
@@ -86,6 +89,7 @@ def cmd_seed(city: str) -> int:
         segments,
         metadata,
         source_name="osm",
+        city_id=city_id,
     )
     t_persist = time.perf_counter() - t1
     log.info(
@@ -107,8 +111,11 @@ def cmd_imagery(city: str, *, max_segments: int | None = None) -> int:
     _configure_logging()
     config = load_city(city)
     database_url = get_database_url()
+    city_id = get_city_id_by_slug(database_url, config.slug)
 
-    log.info("imagery.start", city=config.name, max_segments=max_segments)
+    log.info(
+        "imagery.start", city=config.slug, city_id=str(city_id), max_segments=max_segments
+    )
 
     t0 = time.perf_counter()
     job_config = (
@@ -121,6 +128,7 @@ def cmd_imagery(city: str, *, max_segments: int | None = None) -> int:
             database_url=database_url,
             provider=provider,
             config=job_config,
+            city_id=city_id,
         )
     t_total = time.perf_counter() - t0
 
@@ -169,8 +177,9 @@ def cmd_incidents(city: str, *, years: tuple[int, ...] | None = None) -> int:
     _configure_logging()
     config = load_city(city)
     database_url = get_database_url()
+    city_id = get_city_id_by_slug(database_url, config.slug)
 
-    log.info("incidents.start", city=config.name)
+    log.info("incidents.start", city=config.slug, city_id=str(city_id))
 
     min_lon, min_lat, max_lon, max_lat = config.bbox
     bbox = BoundingBox(
@@ -190,6 +199,7 @@ def cmd_incidents(city: str, *, years: tuple[int, ...] | None = None) -> int:
             provider=provider,
             bbox=bbox,
             config=IncidentIngestConfig(),
+            city_id=city_id,
         )
     t_total = time.perf_counter() - t0
 

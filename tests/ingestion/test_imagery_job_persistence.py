@@ -61,7 +61,7 @@ def _clean_imagery_tables(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 @pytest.fixture
-def seeded_segment(owner_conn: psycopg.Connection[Any]) -> UUID:
+def seeded_segment(owner_conn: psycopg.Connection[Any], cambridge_city_id: Any) -> UUID:
     """Insert one segment whose midpoint matches the cassette waypoint.
 
     The geometry length (~11 m) keeps ``_segment_waypoints`` to a single
@@ -78,11 +78,11 @@ def seeded_segment(owner_conn: psycopg.Connection[Any]) -> UUID:
     with owner_conn.cursor() as cur:
         cur.execute(
             """
-            INSERT INTO road_segments (osm_way_id, geometry, attrs)
-            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), '{}'::jsonb)
+            INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+            VALUES (%s, ST_SetSRID(ST_GeomFromWKB(%s), 4326), '{}'::jsonb, %s)
             RETURNING id
             """,
-            (777_001, wkb.dumps(geom)),
+            (777_001, wkb.dumps(geom), cambridge_city_id),
         )
         row = cur.fetchone()
         assert row is not None
@@ -178,12 +178,15 @@ def preloaded_provider(seeded_segment: UUID) -> _PreloadedProvider:
     return _PreloadedProvider(head, bytes_by_id)
 
 
-def _run_ingest(database_url: str, bucket: str, provider: _PreloadedProvider) -> int:
+def _run_ingest(
+    database_url: str, bucket: str, provider: _PreloadedProvider, city_id: Any
+) -> int:
     summary = ingest_imagery(
         database_url=database_url,
         provider=provider,
         object_store=_MinIOClient(),
         config=ImageryIngestConfig(bucket=bucket),
+        city_id=city_id,
     )
     return summary.rows_inserted
 
@@ -194,8 +197,9 @@ def test_ingest_writes_rows_and_uploads_objects(
     seeded_segment: UUID,
     preloaded_provider: _PreloadedProvider,
     fresh_bucket: str,
+    cambridge_city_id: Any,
 ) -> None:
-    inserted = _run_ingest(database_url, fresh_bucket, preloaded_provider)
+    inserted = _run_ingest(database_url, fresh_bucket, preloaded_provider, cambridge_city_id)
     assert inserted >= 1, f"Expected at least one row inserted, got {inserted}"
 
     with owner_conn.cursor() as cur:
@@ -224,10 +228,11 @@ def test_ingest_is_idempotent(
     seeded_segment: UUID,
     preloaded_provider: _PreloadedProvider,
     fresh_bucket: str,
+    cambridge_city_id: Any,
 ) -> None:
-    first = _run_ingest(database_url, fresh_bucket, preloaded_provider)
+    first = _run_ingest(database_url, fresh_bucket, preloaded_provider, cambridge_city_id)
     assert first >= 1
-    second = _run_ingest(database_url, fresh_bucket, preloaded_provider)
+    second = _run_ingest(database_url, fresh_bucket, preloaded_provider, cambridge_city_id)
     assert second == 0, f"Re-running ingest_imagery must be a no-op; inserted {second} new rows"
 
     with owner_conn.cursor() as cur:
@@ -246,9 +251,10 @@ def test_data_sources_freshness_bumped(
     seeded_segment: UUID,
     preloaded_provider: _PreloadedProvider,
     fresh_bucket: str,
+    cambridge_city_id: Any,
 ) -> None:
     del seeded_segment
-    _run_ingest(database_url, fresh_bucket, preloaded_provider)
+    _run_ingest(database_url, fresh_bucket, preloaded_provider, cambridge_city_id)
 
     with owner_conn.cursor() as cur:
         cur.execute("SELECT last_ingested_at FROM data_sources WHERE name = 'imagery'")
@@ -321,6 +327,7 @@ def test_flushed_batches_persist_when_run_fails_midstream(
     database_url: str,
     seeded_segment: UUID,
     fresh_bucket: str,
+    cambridge_city_id: Any,
 ) -> None:
     """A failure after the first batch flushes must leave the first
     batch's rows durable in segment_imagery — proving per-batch commit."""
@@ -333,6 +340,7 @@ def test_flushed_batches_persist_when_run_fails_midstream(
             provider=provider,
             object_store=_MinIOClient(),
             config=ImageryIngestConfig(bucket=fresh_bucket, insert_batch_size=2),
+            city_id=cambridge_city_id,
         )
 
     # The first batch (2 refs) flushed and must be visible from a

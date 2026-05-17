@@ -92,6 +92,25 @@ def owner_conn(migrated_db: str) -> Iterator[psycopg.Connection[Any]]:
 
 
 @pytest.fixture
+def cambridge_city_id(migrated_db: str) -> Any:
+    """Resolve cambridge's city_id once per test.
+
+    Phase 4b: every writer takes a ``city_id`` parameter. Tests that
+    operate against the existing Cambridge fixtures use this fixture
+    to thread the right UUID through. New per-city tests can use
+    ``ingestion.seed_cities.get_city_id_by_slug(database_url, slug)``
+    directly.
+    """
+    import psycopg as _psycopg
+
+    with _psycopg.connect(migrated_db) as conn, conn.cursor() as cur:
+        cur.execute("SELECT id FROM cities WHERE slug = 'cambridge'")
+        row = cur.fetchone()
+    assert row is not None, "cambridge bootstrap row missing — migration 0017 must run first"
+    return row[0]
+
+
+@pytest.fixture
 def app_conn(
     migrated_db: str,
     app_user: str,

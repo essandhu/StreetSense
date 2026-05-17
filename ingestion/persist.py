@@ -15,6 +15,7 @@ Per CLAUDE.md, no `print` in shipped code — `structlog` events only.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from uuid import UUID
 
 import psycopg
 import structlog
@@ -27,11 +28,17 @@ log = structlog.get_logger(__name__)
 
 
 _INSERT_SEGMENT_SQL = """
-INSERT INTO road_segments (osm_way_id, geometry, attrs)
-VALUES (%(osm_way_id)s, ST_SetSRID(ST_GeomFromWKB(%(wkb)s), 4326), %(attrs)s)
+INSERT INTO road_segments (osm_way_id, geometry, attrs, city_id)
+VALUES (
+    %(osm_way_id)s,
+    ST_SetSRID(ST_GeomFromWKB(%(wkb)s), 4326),
+    %(attrs)s,
+    %(city_id)s
+)
 ON CONFLICT (osm_way_id) WHERE osm_way_id IS NOT NULL DO UPDATE
     SET geometry = EXCLUDED.geometry,
-        attrs    = EXCLUDED.attrs
+        attrs    = EXCLUDED.attrs,
+        city_id  = EXCLUDED.city_id
 """
 
 _ENSURE_UNIQUE_OSM_WAY_ID = """
@@ -73,6 +80,7 @@ def persist_road_segments(
     *,
     source_name: str = "osm",
     batch_size: int = 1000,
+    city_id: UUID,
 ) -> int:
     """Persist `segments` and record the snapshot's ingestion timestamp.
 
@@ -83,6 +91,9 @@ def persist_road_segments(
         snapshot: Provenance of the data being ingested.
         source_name: `data_sources.name` to update. Defaults to "osm".
         batch_size: Number of rows per `executemany` call.
+        city_id: City the segments belong to. Phase 4b: keyword-only and
+            required. Resolved from --city <slug> by the CLI via
+            ``ingestion.seed_cities.get_city_id_by_slug``.
 
     Returns:
         Number of rows written (each upsert counts as one).
@@ -115,6 +126,7 @@ def persist_road_segments(
                     "osm_way_id": seg.osm_way_id,
                     "wkb": wkb.dumps(seg.geometry),
                     "attrs": Jsonb(seg.attrs),
+                    "city_id": city_id,
                 }
             )
             if len(batch) >= batch_size:

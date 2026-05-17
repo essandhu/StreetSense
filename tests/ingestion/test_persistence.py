@@ -64,9 +64,11 @@ def _clean_segment_tables(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 def test_persists_segments_with_geometry_in_4326(
-    owner_conn: psycopg.Connection[Any], database_url: str
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
 ) -> None:
-    count = persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, source_name="osm")
+    count = persist_road_segments(
+        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, source_name="osm", city_id=cambridge_city_id
+    )
     assert count == 2
 
     with owner_conn.cursor() as cur:
@@ -76,8 +78,12 @@ def test_persists_segments_with_geometry_in_4326(
         assert row[0] == 2
 
 
-def test_attrs_preserved_as_jsonb(owner_conn: psycopg.Connection[Any], database_url: str) -> None:
-    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA)
+def test_attrs_preserved_as_jsonb(
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
+) -> None:
+    persist_road_segments(
+        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id
+    )
 
     with owner_conn.cursor() as cur:
         cur.execute("SELECT osm_way_id, attrs FROM road_segments ORDER BY osm_way_id")
@@ -89,9 +95,11 @@ def test_attrs_preserved_as_jsonb(owner_conn: psycopg.Connection[Any], database_
 
 
 def test_data_sources_row_updated_with_last_ingested_at(
-    owner_conn: psycopg.Connection[Any], database_url: str
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
 ) -> None:
-    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, source_name="osm")
+    persist_road_segments(
+        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, source_name="osm", city_id=cambridge_city_id
+    )
 
     with owner_conn.cursor() as cur:
         cur.execute("SELECT name, last_ingested_at, metadata FROM data_sources WHERE name = 'osm'")
@@ -106,10 +114,14 @@ def test_data_sources_row_updated_with_last_ingested_at(
 
 
 def test_reingest_is_idempotent_on_osm_way_id(
-    owner_conn: psycopg.Connection[Any], database_url: str
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
 ) -> None:
-    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA)
-    persist_road_segments(database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA)
+    persist_road_segments(
+        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id
+    )
+    persist_road_segments(
+        database_url, SAMPLE_SEGMENTS, SAMPLE_METADATA, city_id=cambridge_city_id
+    )
 
     with owner_conn.cursor() as cur:
         cur.execute("SELECT COUNT(*) FROM road_segments")

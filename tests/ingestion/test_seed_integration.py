@@ -33,7 +33,7 @@ def _wipe_tables(owner_conn: psycopg.Connection[Any]) -> None:
 
 
 def test_full_seed_pipeline_against_fixture(
-    owner_conn: psycopg.Connection[Any], database_url: str
+    owner_conn: psycopg.Connection[Any], database_url: str, cambridge_city_id: Any
 ) -> None:
     """fetch → parse → persist against the tiny fixture mirrors `make seed`."""
     adapter = OsmiumOSMSource(
@@ -43,7 +43,9 @@ def test_full_seed_pipeline_against_fixture(
     metadata = adapter.fetch(FIXTURE_BBOX, FIXTURE_PATH)
     segments = adapter.parse(metadata.local_path, FIXTURE_BBOX)
 
-    written = persist_road_segments(database_url, segments, metadata, source_name="osm")
+    written = persist_road_segments(
+        database_url, segments, metadata, source_name="osm", city_id=cambridge_city_id
+    )
 
     assert written > 0
 
