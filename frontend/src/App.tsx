@@ -4,6 +4,7 @@ import { useSelector } from "react-redux";
 import { CitySelector } from "./components/AppShell/CitySelector";
 import { ModeToggle } from "./components/ModeToggle/ModeToggle";
 import { useActiveCityUrlSync } from "./state/useActiveCityUrlSync";
+import { useScrubberCityReset } from "./state/useScrubberCityReset";
 import type { RootState } from "./state/store";
 import { DeltaView } from "./views/DeltaView";
 import { MapView } from "./views/MapView";
@@ -21,6 +22,11 @@ const App = () => {
   // writer mirrors slice → URL via replaceState (no history bloat);
   // popstate re-hydrates on browser back / forward.
   useActiveCityUrlSync();
+  // Phase 4b Task 4.7: on every city switch, reset the scrubber to
+  // that city's local solar noon. Mount-time fire is intentional —
+  // a fresh deep-link should land at the new city's noon rather
+  // than the scrubber slice's cambridge-shaped default.
+  useScrubberCityReset();
 
   return (
     <div style={{ position: "absolute", inset: 0 }}>
