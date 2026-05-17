@@ -309,12 +309,33 @@ class FreshnessEntry(BaseModel):
 class FreshnessReport(BaseModel):
     """Response shape for `/admin/freshness`.
 
-    A *list* (wrapped) — not a single object — so Phase 3 can register
-    multiple data sources (imagery providers, incident feeds) without a
-    breaking API change.
+    Three blocks:
+
+    - ``sources``: the pre-Phase-4b flat list of global sources. Stays
+      for backwards compatibility — kind=compute / kind=model entries
+      (solar_position, perception_model, propagation_algorithm) are
+      genuinely global, not per-city.
+    - ``cities`` (Phase 4b Task 3.5): per-city freshness map keyed by
+      slug. Each entry is itself a dict of ``source → timestamp | None``
+      where the sources are the per-city ones derived from the
+      now-city-scoped spatial tables (osm, imagery, incidents,
+      scoring_run). Every slug present in the ``cities`` table appears
+      here, including ones with no ingestion data yet (all-null values
+      let the frontend render "no data yet" without ambiguity between
+      missing and present-but-null).
+    - ``server_time``: the API's clock at response time. Lets clients
+      compute "X hours ago" displays without trusting their own clock.
     """
 
     sources: list[FreshnessEntry]
+    cities: dict[str, dict[str, datetime | None]] = Field(
+        default_factory=dict,
+        description=(
+            "Per-city ingestion freshness keyed by slug. Inner map is "
+            "``source → timestamp | None`` for the per-city sources "
+            "(osm, imagery, incidents, scoring_run)."
+        ),
+    )
     server_time: datetime
 
 
