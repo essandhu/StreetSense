@@ -4,7 +4,57 @@
  */
 
 export interface paths {
-    "/segments/{segment_id}": {
+    "/api/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Cities
+         * @description List every configured city; ETag-cached.
+         *
+         *     Returns 200 with the wrapped envelope on first request and on any
+         *     request whose ``If-None-Match`` doesn't match the current ETag.
+         *     Returns 304 with an empty body when ``If-None-Match`` matches.
+         */
+        get: operations["list_cities_api_cities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cities/{slug}/segments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Segments
+         * @description List the city's segments with their latest scores.
+         *
+         *     The list endpoint is a tile-adjacent read for clients that don't
+         *     want vector-tile geometry yet (or for non-map UIs). Pagination is
+         *     intentionally minimal — a single ``limit`` parameter — because the
+         *     map case is served by ``/tiles/...`` (Task 3.6) and the off-map
+         *     case has no strong pagination need.
+         */
+        get: operations["list_segments_api_cities__slug__segments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cities/{slug}/segments/{segment_id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -14,8 +64,12 @@ export interface paths {
         /**
          * Get Segment
          * @description Return the per-segment detail payload (API 3.0).
+         *
+         *     A segment fetched under the wrong city slug returns 404, not the
+         *     row — the ``WHERE rs.city_id = %(city_id)s`` clause guards
+         *     cross-city access at the query layer.
          */
-        get: operations["get_segment_segments__segment_id__get"];
+        get: operations["get_segment_api_cities__slug__segments__segment_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -41,7 +95,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs": {
+    "/api/cities/{slug}/runs": {
         parameters: {
             query?: never;
             header?: never;
@@ -50,21 +104,9 @@ export interface paths {
         };
         /**
          * List Runs
-         * @description Return every scoring run with full provenance, newest first.
-         *
-         *     Backs the RunPicker (Task 3.3) — the delta endpoint requires the
-         *     caller to already know two run UUIDs, so a separate list endpoint
-         *     is the discovery path. Newest-first matches what the picker shows
-         *     on open: the most recent run pre-selected makes the common-case
-         *     "compare last run to the one before" workflow a single click.
-         *
-         *     No pagination yet: scoring runs are weekly, so the list grows at
-         *     ~52 rows/year. If a long-running deploy ever pushes past a useful
-         *     page size, this endpoint can grow ``page`` / ``page_size`` query
-         *     params alongside :class:`RunListResponse` without a breaking
-         *     change.
+         * @description Return every scoring run for the city, newest-first, with full provenance.
          */
-        get: operations["list_runs_runs_get"];
+        get: operations["list_runs_api_cities__slug__runs_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -73,7 +115,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/runs/{run_a}/delta/{run_b}": {
+    "/api/cities/{slug}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run
+         * @description Return one run's six-field provenance bundle (NEW in Phase 4b).
+         *
+         *     404 when the run UUID is unknown or belongs to a different city —
+         *     the (run_id, city_id) WHERE clause makes "wrong city" and "doesn't
+         *     exist" indistinguishable, which matches the resource-identity
+         *     contract: a run is identified by ``(city, id)``, not ``id`` alone.
+         */
+        get: operations["get_run_api_cities__slug__runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cities/{slug}/runs/{run_id}/scores": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Run Scores
+         * @description Return every persisted segment score for one (city, run) pair (NEW).
+         *
+         *     DISTINCT ON keeps the response one row per segment (Phase 4 writes
+         *     24 hourly rows per (segment, run); the list endpoint returns the
+         *     most recent one). Each row ships the full composite decomposition
+         *     + four sub-scores so the explainability invariant carries through.
+         */
+        get: operations["list_run_scores_api_cities__slug__runs__run_id__scores_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/cities/{slug}/runs/{run_a}/delta/{run_b}": {
         parameters: {
             query?: never;
             header?: never;
@@ -83,8 +175,12 @@ export interface paths {
         /**
          * Get Runs Delta
          * @description Return a paginated list of per-segment deltas between two runs.
+         *
+         *     Both runs must belong to the city in the URL. A run that lives in
+         *     a different city returns 404 — there is no cross-city delta
+         *     operation.
          */
-        get: operations["get_runs_delta_runs__run_a__delta__run_b__get"];
+        get: operations["get_runs_delta_api_cities__slug__runs__run_a__delta__run_b__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -173,13 +269,35 @@ export interface components {
          * FreshnessReport
          * @description Response shape for `/admin/freshness`.
          *
-         *     A *list* (wrapped) — not a single object — so Phase 3 can register
-         *     multiple data sources (imagery providers, incident feeds) without a
-         *     breaking API change.
+         *     Three blocks:
+         *
+         *     - ``sources``: the pre-Phase-4b flat list of global sources. Stays
+         *       for backwards compatibility — kind=compute / kind=model entries
+         *       (solar_position, perception_model, propagation_algorithm) are
+         *       genuinely global, not per-city.
+         *     - ``cities`` (Phase 4b Task 3.5): per-city freshness map keyed by
+         *       slug. Each entry is itself a dict of ``source → timestamp | None``
+         *       where the sources are the per-city ones derived from the
+         *       now-city-scoped spatial tables (osm, imagery, incidents,
+         *       scoring_run). Every slug present in the ``cities`` table appears
+         *       here, including ones with no ingestion data yet (all-null values
+         *       let the frontend render "no data yet" without ambiguity between
+         *       missing and present-but-null).
+         *     - ``server_time``: the API's clock at response time. Lets clients
+         *       compute "X hours ago" displays without trusting their own clock.
          */
         FreshnessReport: {
             /** Sources */
             sources: components["schemas"]["FreshnessEntry"][];
+            /**
+             * Cities
+             * @description Per-city ingestion freshness keyed by slug. Inner map is ``source → timestamp | None`` for the per-city sources (osm, imagery, incidents, scoring_run).
+             */
+            cities?: {
+                [key: string]: {
+                    [key: string]: string | null;
+                };
+            };
             /**
              * Server Time
              * Format: date-time
@@ -254,6 +372,38 @@ export interface components {
         RunListResponse: {
             /** Runs */
             runs: components["schemas"]["ScoringRunMetadata"][];
+        };
+        /**
+         * RunScoreEntry
+         * @description One row of ``GET /api/cities/{slug}/runs/{run_id}/scores``.
+         *
+         *     Same field shape as :class:`SegmentSummary` minus ``osm_way_id``
+         *     (the scores endpoint is scoped to one run; the caller already has
+         *     the run metadata if they need it, and OSM identity belongs with
+         *     the segment-level resource).
+         */
+        RunScoreEntry: {
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /** Composite Risk */
+            composite_risk: number;
+            /** Local Contribution */
+            local_contribution: number;
+            /** Propagation Uplift */
+            propagation_uplift: number;
+            sub_scores: components["schemas"]["SubScores"];
+            confidence: components["schemas"]["ConfidenceIndicator"];
+        };
+        /**
+         * RunScoresResponse
+         * @description Response payload for ``GET /api/cities/{slug}/runs/{run_id}/scores``.
+         */
+        RunScoresResponse: {
+            /** Scores */
+            scores: components["schemas"]["RunScoreEntry"][];
         };
         /**
          * ScoringRunMetadata
@@ -390,6 +540,52 @@ export interface components {
             };
         };
         /**
+         * SegmentListResponse
+         * @description Response payload for ``GET /api/cities/{slug}/segments``.
+         *
+         *     Wrapped envelope matching :class:`RunListResponse` /
+         *     :class:`FreshnessReport` precedent so a future need for paging
+         *     fields or a summary count lands non-breaking.
+         */
+        SegmentListResponse: {
+            /** Segments */
+            segments: components["schemas"]["SegmentSummary"][];
+        };
+        /**
+         * SegmentSummary
+         * @description One row of the city-scoped segment list.
+         *
+         *     Lighter than :class:`SegmentDetail`: omits imagery, glare metadata,
+         *     and the typed propagation_algorithm block. Keeps the four pieces a
+         *     list-view consumer needs:
+         *
+         *     - the segment's identity (UUID + osm_way_id)
+         *     - the composite decomposition (`composite_risk`,
+         *       `local_contribution`, `propagation_uplift`) — explainability
+         *       invariant on the list path
+         *     - the four sub-scores
+         *     - the confidence indicator (may be ``None`` if the segment hasn't
+         *       been scored yet)
+         */
+        SegmentSummary: {
+            /**
+             * Segment Id
+             * Format: uuid
+             */
+            segment_id: string;
+            /** Osm Way Id */
+            osm_way_id: number | null;
+            /** Composite Risk */
+            composite_risk: number;
+            /** Local Contribution */
+            local_contribution: number;
+            /** Propagation Uplift */
+            propagation_uplift: number;
+            sub_scores: components["schemas"]["SubScores"];
+            /** @description Present when a ``segment_scores`` row exists for the segment in the latest run. ``None`` when the segment is ingested but not yet scored. */
+            confidence?: components["schemas"]["ConfidenceIndicator"] | null;
+        };
+        /**
          * SubScore
          * @description One sub-score's per-segment, per-timestamp output as exposed at
          *     the API boundary.
@@ -474,7 +670,62 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    get_segment_segments__segment_id__get: {
+    list_cities_api_cities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    list_segments_api_cities__slug__segments_get: {
+        parameters: {
+            query?: {
+                /** @description Maximum segments to return. Capped at 500 to keep the response within the tile-style payload budget. */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description Lowercase city identifier — the URL path segment used throughout the API. See ``GET /api/cities`` for the live list of valid slugs. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SegmentListResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_segment_api_cities__slug__segments__segment_id__get: {
         parameters: {
             query?: {
                 /** @description Optional ISO-8601 UTC instant. Snaps to the nearest persisted hourly sample in segment_scores. Omitted ⇒ most recent score row. */
@@ -483,6 +734,8 @@ export interface operations {
             header?: never;
             path: {
                 segment_id: string;
+                /** @description Lowercase city identifier — the URL path segment used throughout the API. See ``GET /api/cities`` for the live list of valid slugs. */
+                slug: string;
             };
             cookie?: never;
         };
@@ -528,11 +781,14 @@ export interface operations {
             };
         };
     };
-    list_runs_runs_get: {
+    list_runs_api_cities__slug__runs_get: {
         parameters: {
             query?: never;
             header?: never;
-            path?: never;
+            path: {
+                /** @description Lowercase city identifier — the URL path segment used throughout the API. See ``GET /api/cities`` for the live list of valid slugs. */
+                slug: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -546,9 +802,84 @@ export interface operations {
                     "application/json": components["schemas"]["RunListResponse"];
                 };
             };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
         };
     };
-    get_runs_delta_runs__run_a__delta__run_b__get: {
+    get_run_api_cities__slug__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                /** @description Lowercase city identifier — the URL path segment used throughout the API. See ``GET /api/cities`` for the live list of valid slugs. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScoringRunMetadata"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_run_scores_api_cities__slug__runs__run_id__scores_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+                /** @description Lowercase city identifier — the URL path segment used throughout the API. See ``GET /api/cities`` for the live list of valid slugs. */
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunScoresResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_runs_delta_api_cities__slug__runs__run_a__delta__run_b__get: {
         parameters: {
             query?: {
                 /** @description Optional ISO-8601 UTC instant. Its hour-of-day picks the row pair on each side. Omitted ⇒ noon UTC. */
@@ -562,6 +893,8 @@ export interface operations {
             path: {
                 run_a: string;
                 run_b: string;
+                /** @description Lowercase city identifier — the URL path segment used throughout the API. See ``GET /api/cities`` for the live list of valid slugs. */
+                slug: string;
             };
             cookie?: never;
         };
