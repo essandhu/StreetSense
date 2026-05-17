@@ -29,10 +29,11 @@ UV   ?= uv
 PNPM ?= pnpm
 
 .DEFAULT_GOAL := help
-.PHONY: help seed ingest-imagery ingest-incidents seed-model api scoring-run test test-fast test-e2e test-all lint db-up db-down migrate clean
+.PHONY: help seed seed-cities ingest-imagery ingest-incidents seed-model api scoring-run test test-fast test-e2e test-all lint db-up db-down migrate clean
 
 help:
 	@printf 'Targets:\n'
+	@printf '  make seed-cities        Phase 4b: seed cities table from config/cities/*.yaml\n'
 	@printf '  make seed CITY=<slug>   Ingest city OSM into Postgres (default: cambridge)\n'
 	@printf '  make ingest-imagery CITY=<slug>  Ingest street-level imagery (Phase 3)\n'
 	@printf '  make ingest-incidents CITY=<slug> Ingest historical road incidents (Phase 4)\n'
@@ -60,6 +61,11 @@ migrate:
 
 seed: db-up migrate
 	$(UV) run python -m ingestion.cli seed --city $(CITY)
+
+# Phase 4b — seed the cities registry table from the YAML configs in
+# config/cities/. Idempotent.
+seed-cities: db-up migrate
+	$(UV) run python -m ingestion.cli seed-cities
 
 ingest-imagery: db-up migrate
 	$(UV) run python -m ingestion.cli imagery --city $(CITY)

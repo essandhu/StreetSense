@@ -43,6 +43,7 @@ from ingestion.incidents.massdot_impact import MassDOTImpactProvider
 from ingestion.incidents.provider import BoundingBox
 from ingestion.osm.osmium_adapter import GeofabrikOSMSource
 from ingestion.persist import persist_road_segments
+from ingestion.seed_cities import seed_cities
 
 log = structlog.get_logger(__name__)
 
@@ -140,6 +141,29 @@ def cmd_imagery(city: str, *, max_segments: int | None = None) -> int:
     return 0
 
 
+def cmd_seed_cities() -> int:
+    """Phase 4b: seed the ``cities`` table from ``config/cities/*.yaml``.
+
+    Idempotent. Re-running with no YAML changes is a no-op apart from
+    structlog events; idempotency is the load-bearing invariant since
+    this command lands in every dev-environment bootstrap path (and
+    eventually a Phase 5 CI step).
+    """
+    _configure_logging()
+    database_url = get_database_url()
+
+    log.info("seed_cities.cli.start")
+    summary = seed_cities(database_url)
+    log.info(
+        "seed_cities.cli.done",
+        inserted=summary.inserted,
+        updated=summary.updated,
+        unchanged=summary.unchanged,
+        total=summary.total,
+    )
+    return 0
+
+
 def cmd_incidents(city: str, *, years: tuple[int, ...] | None = None) -> int:
     """Ingest historical incidents for the configured city (Phase 4)."""
     _configure_logging()
@@ -202,6 +226,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Cap the number of segments processed (default: unlimited).",
     )
 
+    sub.add_parser(
+        "seed-cities",
+        help=(
+            "Phase 4b: seed the cities table from config/cities/*.yaml. "
+            "Idempotent — safe to re-run."
+        ),
+    )
+
     incidents = sub.add_parser(
         "incidents",
         help="Ingest historical road incidents for the configured city (Phase 4).",
@@ -221,6 +253,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return cmd_seed(args.city)
     if args.cmd == "imagery":
         return cmd_imagery(args.city, max_segments=args.max_segments)
+    if args.cmd == "seed-cities":
+        return cmd_seed_cities()
     if args.cmd == "incidents":
         years_arg: tuple[int, ...] | None = None
         if args.years:
