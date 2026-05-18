@@ -4,7 +4,7 @@ A web-based platform that forecasts where and when road conditions will challeng
 
 ## Status
 
-Phase 5 of 5: **Delta Analysis + Scheduled Re-scoring + Live Public URL** — in progress.
+Phase 4b (**Multi-City Foundation**) shipping; Phase 5 (Delta Analysis + Public Deployment) paused, resumes after 4b lands.
 
 | Phase | Output | State |
 |---|---|---|
@@ -12,7 +12,10 @@ Phase 5 of 5: **Delta Analysis + Scheduled Re-scoring + Live Public URL** — in
 | 2 | Animated glare corridor across a day | shipped |
 | 3 | Lane quality layer with click-through to source imagery | shipped |
 | 4 | Composite risk layer with documented performance benchmark | shipped |
-| 5 | Live publicly accessible instance with delta analysis | in progress (Fly.io provisioning pending) |
+| 4b | **Multi-city foundation** — 5 cities ingested end-to-end, city selector, deep-linking | in progress (Phase 5 of 5 — validation + demo) |
+| 5 | Live publicly accessible instance with delta analysis | paused (resumes after 4b ships against the multi-city schema) |
+
+**Multi-city (Phase 4b):** five cities shipped — Cambridge (grandfathered demo), Phoenix, San Francisco, Austin, Los Angeles. The selection rationale (ADAS deployment footprint, traffic/population density, OSM + imagery coverage, sun-geometry diversity) lives in [ADR 0010](docs/adr/0010-multi-city-selection.md). Demo walkthrough: [docs/PHASE_4B_DEMO.md](docs/PHASE_4B_DEMO.md).
 
 **Phase 5 live URL:** _TBD — published after `flyctl deploy` returns the hostname. Frontend + JSON API behind one shared basic-auth credential. A "Methodology" page in the live UI explains how each number is computed; a "Delta" mode toggle compares any two scoring runs with a GPU-painted delta map, sorted largest-changes list, and a D3 histogram. The Phase 5 demo walkthrough lives in `docs/PHASE_5_DEMO.md`._
 
@@ -34,13 +37,17 @@ Prerequisites: Docker, `uv` (Python), `pnpm` (Node 20+), and a C++17 toolchain +
 
 ```bash
 git submodule update --init --recursive
-docker compose up -d            # Postgres 16 + PostGIS 3.4 + MinIO + pg_tileserv
-uv sync                          # Python deps + builds the C++ propagator
-make seed                        # Ingest one city (default: Cambridge, MA)
-make scoring-run                 # First scoring run end-to-end
-make api                         # FastAPI on :8000
-cd frontend && pnpm install && pnpm dev    # http://localhost:5173
+docker compose up -d                                # Postgres 16 + PostGIS 3.4 + MinIO + pg_tileserv
+uv sync                                              # Python deps + builds the C++ propagator
+uv run alembic upgrade head                          # Apply migrations (0017-0019 introduce the cities table)
+make seed-cities                                     # Seed the cities table from config/cities/*.yaml
+make seed CITY=cambridge                             # Ingest one city (defaults to Cambridge, MA)
+make scoring-run CITY=cambridge                      # First scoring run end-to-end
+make api                                             # FastAPI on :8000
+cd frontend && pnpm install && pnpm dev              # http://localhost:5173 (city selector in the top bar; deep-link via ?city=<slug>)
 ```
+
+To add another shipped city (Phoenix, San Francisco, Austin, Los Angeles), repeat `make seed CITY=<slug>` + `make scoring-run CITY=<slug>` with the corresponding slug. To add a brand-new city, drop a `config/cities/<slug>.yaml` and follow the [AC-4 walkthrough in PHASE_4B_DEMO.md](docs/PHASE_4B_DEMO.md#ac-4--configuration-only-city-addition) — no application source code change required.
 
 ## Production deploy
 
