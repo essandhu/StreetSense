@@ -57,16 +57,18 @@ test.describe("Phase 4b city switching", () => {
     });
 
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
 
     const selector = page.getByTestId("city-selector");
     await expect(selector).toBeVisible();
     await expect(selector).toHaveValue(CAMBRIDGE_SLUG);
 
     // The canvas is up and tiles for cambridge were fetched.
+    // Poll for the first cambridge tile rather than waiting for full
+    // network-idle (LA's 10M+ scored rows make idle a slow signal).
     await expect(page.locator("canvas").first()).toBeVisible();
-    expect(tileSlugs.has(CAMBRIDGE_SLUG)).toBe(true);
+    await expect
+      .poll(() => tileSlugs.has(CAMBRIDGE_SLUG), { timeout: 10_000 })
+      .toBe(true);
   });
 
   test("dropdown switch updates URL, dispatches tile fetches for the new slug", async ({
@@ -75,7 +77,9 @@ test.describe("Phase 4b city switching", () => {
     const tileSlugsAfterSwitch = new Set<string>();
 
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
+    // Wait just long enough for the selector to hydrate so we know
+    // the boot tile fetches have started; we don't need full idle.
+    await expect(page.getByTestId("city-selector")).toHaveValue(CAMBRIDGE_SLUG);
 
     // Start listening AFTER initial load so we only see post-switch
     // tile requests (and ignore the cambridge boot fetches).
@@ -90,21 +94,29 @@ test.describe("Phase 4b city switching", () => {
     // single-select dropdown with value=slug per
     // ``frontend/src/components/AppShell/CitySelector.tsx``.
     await page.getByTestId("city-selector").selectOption(SECOND_CITY_SLUG);
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(400);
 
-    // URL hydration round-trip: state writes to the URL via
-    // ``useActiveCityUrlSync`` (history.replaceState).
-    expect(new URL(page.url()).searchParams.get("city")).toBe(SECOND_CITY_SLUG);
-
-    // The CitySelector itself reflects the new state.
+    // The CitySelector itself reflects the new state — locator
+    // auto-retries up to 5s, which is enough for the synchronous
+    // Redux dispatch + re-render.
     await expect(page.getByTestId("city-selector")).toHaveValue(SECOND_CITY_SLUG);
 
-    // At least one tile fetch went to the new slug. Phoenix may
-    // genuinely have zero scored tiles right now (Task 2.5's
-    // staged ingestion), so we assert on *tile URL shape*, not
-    // segment-count. Empty MVTs are the documented success path.
-    expect(tileSlugsAfterSwitch.has(SECOND_CITY_SLUG)).toBe(true);
+    // URL hydration round-trip: state writes to the URL via
+    // ``useActiveCityUrlSync`` (history.replaceState). Poll
+    // briefly — replaceState fires inside a useEffect.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("city"), { timeout: 5000 })
+      .toBe(SECOND_CITY_SLUG);
+
+    // At least one tile fetch went to the new slug. With multi-city
+    // ingest complete, the larger cities (phoenix 325k, LA 453k
+    // segments) generate enough tile traffic that ``networkidle``
+    // can take >30s to settle; we don't wait for that. We do give
+    // the listener a brief window to capture the first post-switch
+    // fetch — deck.gl/MapLibre re-source happens synchronously,
+    // tile network calls land in the next 500-1000ms.
+    await expect
+      .poll(() => tileSlugsAfterSwitch.has(SECOND_CITY_SLUG), { timeout: 8000 })
+      .toBe(true);
   });
 
   test("deep link ?city=austin loads austin directly, not the default city", async ({
@@ -119,18 +131,21 @@ test.describe("Phase 4b city switching", () => {
     });
 
     await page.goto(`/?city=${DEEP_LINK_SLUG}`);
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(500);
 
     // CitySelector hydrated from the URL on mount (per
     // ``hydrateActiveCityFromUrl`` + ``useActiveCityUrlSync``).
     await expect(page.getByTestId("city-selector")).toHaveValue(DEEP_LINK_SLUG);
 
+    // Wait for the first tile fetch to land. Austin (224k segments)
+    // generates enough traffic that ``networkidle`` is unreliable;
+    // we just need at least one tile request to verify the deep link
+    // routed through the activeCity slice.
+    await expect.poll(() => tileSlugsSeen.length, { timeout: 10_000 }).toBeGreaterThan(0);
+
     // Tile fetches all went to austin — the deep link did not
     // flash through cambridge tiles. The activeCity slice hydrates
     // synchronously on mount before MapLibre's first tile request,
     // so this property holds even on a cold load.
-    expect(tileSlugsSeen.length).toBeGreaterThan(0);
     expect(tileSlugsSeen.every((slug) => slug === DEEP_LINK_SLUG)).toBe(true);
   });
 
@@ -139,16 +154,19 @@ test.describe("Phase 4b city switching", () => {
   }) => {
     // Start deep-linked to austin, then switch to phoenix via
     // the dropdown; URL must change to ?city=phoenix.
+    //
+    // We deliberately don't ``waitForLoadState("networkidle")`` —
+    // austin (224k) and phoenix (325k) both generate enough tile
+    // traffic that networkidle can take >30s. Instead we wait on
+    // the specific UI state we care about (selector value + URL),
+    // which auto-retries.
     await page.goto(`/?city=${DEEP_LINK_SLUG}`);
-    await page.waitForLoadState("networkidle");
-
     await expect(page.getByTestId("city-selector")).toHaveValue(DEEP_LINK_SLUG);
 
     await page.getByTestId("city-selector").selectOption(SECOND_CITY_SLUG);
-    await page.waitForLoadState("networkidle");
-    await page.waitForTimeout(300);
-
-    expect(new URL(page.url()).searchParams.get("city")).toBe(SECOND_CITY_SLUG);
     await expect(page.getByTestId("city-selector")).toHaveValue(SECOND_CITY_SLUG);
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("city"), { timeout: 5000 })
+      .toBe(SECOND_CITY_SLUG);
   });
 });
