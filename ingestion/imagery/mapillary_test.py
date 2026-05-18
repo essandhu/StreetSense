@@ -257,13 +257,59 @@ def test_get_with_retry_succeeds_after_one_5xx() -> None:
     assert refs[0].provider_image_id == "img-1"
 
 
-def test_get_with_retry_raises_after_max_attempts() -> None:
-    """Sustained 5xx exhausts retries and raises the final HTTPStatusError."""
-    with (
-        _provider_with_responses([_mock_response(500, None) for _ in range(3)]) as provider,
-        pytest.raises(httpx.HTTPStatusError),
-    ):
-        list(provider.fetch_for_waypoints([_waypoint()]))
+def test_persistent_5xx_skips_the_waypoint_and_returns_no_refs() -> None:
+    """A single waypoint that 5xxs persistently is logged-and-skipped.
+
+    Mapillary's Graph API occasionally returns ``500 {"error":{"code":1,
+    "message":"Please reduce the amount of data you're asking for"}}``
+    for bboxes in densely-imaged areas (downtown SF, central Manhattan).
+    The error is *persistent* for that bbox, not transient — retrying
+    the same URL N times yields the same 500. Phase 4b's multi-city
+    ingest must not let a single such waypoint kill a 50-segment run;
+    the supervisor's outer retry can't help because the same waypoint
+    fails again on re-invocation.
+
+    New behavior: after exhausting the per-call retry budget, a 5xx is
+    treated as 'no imagery available at this waypoint' — the iterator
+    yields nothing for the failing waypoint and continues to the next.
+    The ``mapillary.waypoint_skipped_persistent_5xx`` warning preserves
+    the operational signal so coverage gaps are visible.
+    """
+    with _provider_with_responses(
+        [_mock_response(500, None) for _ in range(3)]
+    ) as provider:
+        refs = list(provider.fetch_for_waypoints([_waypoint()]))
+    assert refs == []
+
+
+def test_persistent_5xx_on_one_waypoint_does_not_block_others() -> None:
+    """A failing waypoint is skipped; subsequent waypoints still get their refs.
+
+    The headline operational property: an SF ingest must not stall on
+    one bad Embarcadero bbox. The next waypoint, in a less-dense area,
+    must still yield its image. Verifies the supervisor's "make progress
+    across the run" contract.
+    """
+    responses = [
+        # First waypoint: three 5xxs (exhausts retries → skip).
+        _mock_response(500, None),
+        _mock_response(500, None),
+        _mock_response(500, None),
+        # Second waypoint: a clean 200 with imagery.
+        _mock_response(200, _ok_payload()),
+    ]
+    wp_bad = _waypoint(sample_index=0)
+    wp_good = Waypoint(
+        lat=_CAMBRIDGE_LAT + 0.0005,
+        lon=_CAMBRIDGE_LON + 0.0005,
+        segment_id=_SEG_ID,
+        sample_index=1,
+    )
+    with _provider_with_responses(responses) as provider:
+        refs = list(provider.fetch_for_waypoints([wp_bad, wp_good]))
+    assert len(refs) == 1
+    assert refs[0].sample_index == 1
+    assert refs[0].provider_image_id == "img-1"
 
 
 def test_get_with_retry_4xx_raises_immediately() -> None:

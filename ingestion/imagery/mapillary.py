@@ -147,7 +147,43 @@ class MapillaryProvider:
         within: tuple[date, date] | None = None,
     ) -> Iterator[ImageryReference]:
         for waypoint in waypoints:
-            yield from self._fetch_one_waypoint(waypoint, within=within)
+            try:
+                yield from self._fetch_one_waypoint(waypoint, within=within)
+            except httpx.HTTPStatusError as exc:
+                # Skip-on-persistent-5xx. Mapillary occasionally returns
+                # 500 {"error":{"code":1,"message":"Please reduce the
+                # amount of data..."}} for bboxes in densely-imaged
+                # areas (downtown SF, central Manhattan). The error is
+                # *persistent* for that bbox — retrying the same URL
+                # yields the same 500 — so the inner ``_get_with_retry``
+                # exhausts its budget and raises. Without this catch,
+                # a 50-segment ingest dies on the first dense waypoint
+                # and the outer supervisor can't help (re-invocation
+                # hits the same URL again). Treating the failure as
+                # 'no imagery available at this waypoint' is honest:
+                # we have no way to recover the data, and the next
+                # waypoint may be perfectly happy. 4xx still bubbles —
+                # those are client/auth errors and retry won't help.
+                response = exc.response
+                status = response.status_code if response is not None else None
+                if status is None or status < 500:
+                    raise
+                body_excerpt: str | None = None
+                if response is not None:
+                    try:
+                        body_excerpt = response.text[:200]
+                    except Exception:  # pragma: no cover — defensive
+                        body_excerpt = None
+                log.warning(
+                    "mapillary.waypoint_skipped_persistent_5xx",
+                    segment_id=str(waypoint.segment_id),
+                    sample_index=waypoint.sample_index,
+                    lat=waypoint.lat,
+                    lon=waypoint.lon,
+                    status=status,
+                    response_body=body_excerpt,
+                )
+                continue
 
     def _get_with_retry(
         self,
