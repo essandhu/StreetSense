@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-18T19:32:50.204693+00:00",
+  "base_url": "http://localhost:7800",
+  "layer": "public.road_segments_tile_t",
+  "city_slug": "san-francisco",
+  "bbox": [
+    -122.465,
+    37.735,
+    -122.405,
+    37.795
+  ],
+  "zoom": 14,
+  "reference_day": "2025-06-21",
+  "tile_count": 20,
+  "temporal_samples": 24,
+  "request_count_per_phase": 480,
+  "concurrency": 1,
+  "cold": {
+    "count": 480,
+    "p50_ms": 59.81505001545884,
+    "p95_ms": 130.081599985715,
+    "p99_ms": 179.06669998774305,
+    "max_ms": 273.0149999842979,
+    "mean_ms": 65.40653333371058
+  },
+  "warm": {
+    "count": 480,
+    "p50_ms": 43.42329999781214,
+    "p95_ms": 77.064800017979,
+    "p99_ms": 90.0567999924533,
+    "max_ms": 94.93239998118952,
+    "mean_ms": 46.35346000043985
+  },
+  "full_bbox": [
+    -122.52,
+    37.7,
+    -122.35,
+    37.83
+  ],
+  "sample_window_deg": 0.06,
+  "segment_count": 64033
+}

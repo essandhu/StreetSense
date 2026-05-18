@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-05-18T19:37:08.661Z",
+  "city_slug": "cambridge",
+  "sample_count": 120,
+  "samples_over_100ms": 10,
+  "fraction_over_100ms": 0.08333333333333333,
+  "median_ms": 16.700000000000728,
+  "mean_ms": 274.71083333333337,
+  "p95_ms": 2283.300000000003,
+  "max_ms": 7616.200000000004,
+  "budget_median_ms": 20,
+  "budget_p95_ms": 100
+}

@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-18T19:30:48.085116+00:00",
+  "base_url": "http://localhost:7800",
+  "layer": "public.road_segments_tile_t",
+  "city_slug": "cambridge",
+  "bbox": [
+    -71.145,
+    42.349999999999994,
+    -71.085,
+    42.41
+  ],
+  "zoom": 14,
+  "reference_day": "2025-06-21",
+  "tile_count": 15,
+  "temporal_samples": 24,
+  "request_count_per_phase": 360,
+  "concurrency": 1,
+  "cold": {
+    "count": 360,
+    "p50_ms": 40.493950014933944,
+    "p95_ms": 73.58059997204691,
+    "p99_ms": 82.81300001544878,
+    "max_ms": 103.24970004148781,
+    "mean_ms": 40.044254166746725
+  },
+  "warm": {
+    "count": 360,
+    "p50_ms": 40.8039000176359,
+    "p95_ms": 75.73849998880178,
+    "p99_ms": 91.83519997168332,
+    "max_ms": 104.05740002170205,
+    "mean_ms": 40.728701110896914
+  },
+  "full_bbox": [
+    -71.16,
+    42.35,
+    -71.07,
+    42.41
+  ],
+  "sample_window_deg": 0.06,
+  "segment_count": 36601
+}

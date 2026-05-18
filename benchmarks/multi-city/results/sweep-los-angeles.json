@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-18T19:31:16.895791+00:00",
+  "base_url": "http://localhost:7800",
+  "layer": "public.road_segments_tile_t",
+  "city_slug": "los-angeles",
+  "bbox": [
+    -118.445,
+    33.99,
+    -118.38499999999999,
+    34.050000000000004
+  ],
+  "zoom": 14,
+  "reference_day": "2025-06-21",
+  "tile_count": 16,
+  "temporal_samples": 24,
+  "request_count_per_phase": 384,
+  "concurrency": 1,
+  "cold": {
+    "count": 384,
+    "p50_ms": 38.53105002781376,
+    "p95_ms": 58.68459999328479,
+    "p99_ms": 66.34540000231937,
+    "max_ms": 94.69579998403788,
+    "mean_ms": 38.748870572817395
+  },
+  "warm": {
+    "count": 384,
+    "p50_ms": 36.349650035845116,
+    "p95_ms": 54.199200007133186,
+    "p99_ms": 66.05840002885088,
+    "max_ms": 69.83629998285323,
+    "mean_ms": 36.116408592685424
+  },
+  "full_bbox": [
+    -118.67,
+    33.7,
+    -118.16,
+    34.34
+  ],
+  "sample_window_deg": 0.06,
+  "segment_count": 452792
+}

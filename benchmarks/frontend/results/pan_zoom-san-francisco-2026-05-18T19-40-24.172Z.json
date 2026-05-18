@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-05-18T19:40:24.173Z",
+  "city_slug": "san-francisco",
+  "sample_count": 122,
+  "samples_over_100ms": 11,
+  "fraction_over_100ms": 0.09016393442622951,
+  "median_ms": 16.69999999999709,
+  "mean_ms": 547.7926229508198,
+  "p95_ms": 5149.799999999996,
+  "max_ms": 10966.300000000003,
+  "budget_median_ms": 20,
+  "budget_p95_ms": 100
+}

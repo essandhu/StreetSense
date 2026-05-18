@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-18T19:31:56.498165+00:00",
+  "base_url": "http://localhost:7800",
+  "layer": "public.road_segments_tile_t",
+  "city_slug": "phoenix",
+  "bbox": [
+    -112.155,
+    33.575,
+    -112.095,
+    33.635000000000005
+  ],
+  "zoom": 14,
+  "reference_day": "2025-06-21",
+  "tile_count": 20,
+  "temporal_samples": 24,
+  "request_count_per_phase": 480,
+  "concurrency": 1,
+  "cold": {
+    "count": 480,
+    "p50_ms": 54.83024998102337,
+    "p95_ms": 98.69970002910122,
+    "p99_ms": 154.76980002131313,
+    "max_ms": 194.7669999790378,
+    "mean_ms": 60.26814458467319
+  },
+  "warm": {
+    "count": 480,
+    "p50_ms": 19.813449995126575,
+    "p95_ms": 38.4980000089854,
+    "p99_ms": 53.00289997830987,
+    "max_ms": 68.07939999271184,
+    "mean_ms": 22.106509166769683
+  },
+  "full_bbox": [
+    -112.32,
+    33.29,
+    -111.93,
+    33.92
+  ],
+  "sample_window_deg": 0.06,
+  "segment_count": 325052
+}

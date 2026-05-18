@@ -1,0 +1,13 @@
+{
+  "timestamp": "2026-05-18T19:43:10.487Z",
+  "city_slug": "los-angeles",
+  "sample_count": 120,
+  "samples_over_100ms": 11,
+  "fraction_over_100ms": 0.09166666666666666,
+  "median_ms": 16.700000000000728,
+  "mean_ms": 101.10749999999999,
+  "p95_ms": 866.5999999999985,
+  "max_ms": 1633.2999999999993,
+  "budget_median_ms": 20,
+  "budget_p95_ms": 100
+}

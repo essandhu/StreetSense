@@ -27,15 +27,32 @@ const RESULTS_DIR = path.resolve(__dirname, "results");
 const BUDGET_MEDIAN_MS = 20;
 const BUDGET_P95_MS = 100;
 
+// Phase 4b Task 5.2: per-city pan/zoom sweep. The base benchmark
+// from Phase 1 always navigated to "/" (default city). To measure
+// each shipped city, override via `CITY_SLUG=<slug>` env var. The
+// city is deep-linked through `?city=<slug>` — the activeCity URL
+// hydrator (Task 4.5) picks it up on mount, the map fits the city
+// bbox, and tile sources rebind. The pan/zoom + zoom-wheel
+// sequence then runs in the new viewport.
+const CITY_SLUG = process.env.CITY_SLUG ?? "cambridge";
+
 const quantile = (sorted: number[], q: number): number => {
   if (sorted.length === 0) return 0;
   const idx = Math.max(0, Math.min(sorted.length - 1, Math.ceil(q * sorted.length) - 1));
   return sorted[idx]!;
 };
 
-test("pan/zoom holds sub-100ms frame budget", async ({ page }) => {
-  test.setTimeout(120_000);
-  await page.goto("/");
+test(`pan/zoom holds sub-100ms frame budget [city=${CITY_SLUG}]`, async ({ page }) => {
+  // Phase 4b: bumped from 120s to 180s. The per-city sweep
+  // (Task 5.2) hit 120s on austin specifically — austin's
+  // default_zoom=11 viewport pulls dense suburban tiles that
+  // deck.gl MVT-decodes serially. The other four cities finished
+  // in 35-110s; the 60-second buffer accommodates the dense-grid
+  // tail without admitting a soft-perf regression — the assertion
+  // is still median<20ms and fraction-over-100ms<20%, not the
+  // total wall clock.
+  test.setTimeout(180_000);
+  await page.goto(`/?city=${encodeURIComponent(CITY_SLUG)}`);
   await page.waitForLoadState("networkidle");
 
   // Warm up: pan across the same area the measured pan will traverse,
@@ -203,11 +220,13 @@ test("pan/zoom holds sub-100ms frame budget", async ({ page }) => {
   const max = sorted[sorted.length - 1] ?? 0;
   const mean = samples.reduce((a, b) => a + b, 0) / samples.length;
 
-  // Persist result.
+  // Persist result. Filename includes the city slug so per-city
+  // sweep results don't collide.
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
+  const stamp = new Date().toISOString().replace(/:/g, "-");
   const resultPath = path.join(
     RESULTS_DIR,
-    `pan_zoom-${new Date().toISOString().replace(/:/g, "-")}.json`
+    `pan_zoom-${CITY_SLUG}-${stamp}.json`
   );
   // For diagnostic value: count how many samples blow the per-frame
   // budget. With deck.gl's overlay mounted, tile-decode + GPU upload
@@ -222,6 +241,7 @@ test("pan/zoom holds sub-100ms frame budget", async ({ page }) => {
     JSON.stringify(
       {
         timestamp: new Date().toISOString(),
+        city_slug: CITY_SLUG,
         sample_count: samples.length,
         samples_over_100ms: samplesOverBudget,
         fraction_over_100ms: fractionOverBudget,

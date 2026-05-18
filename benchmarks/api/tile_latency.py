@@ -68,9 +68,11 @@ async def _fetch_tile(
     z: int,
     x: int,
     y: int,
+    query: str,
 ) -> float:
     """Fetch one MVT and return its latency in seconds."""
-    url = f"{base_url}/tiles/{layer}/{z}/{x}/{y}.pbf"
+    suffix = f"?{query}" if query else ""
+    url = f"{base_url}/tiles/{layer}/{z}/{x}/{y}.pbf{suffix}"
     t0 = time.perf_counter()
     resp = await client.get(url, timeout=10.0)
     elapsed = time.perf_counter() - t0
@@ -83,6 +85,7 @@ async def _run_phase(
     layer: str,
     tiles: list[tuple[int, int, int]],
     concurrency: int,
+    query: str,
 ) -> list[float]:
     sem = asyncio.Semaphore(concurrency)
 
@@ -91,7 +94,7 @@ async def _run_phase(
         async def _one(t: tuple[int, int, int]) -> float:
             z, x, y = t
             async with sem:
-                return await _fetch_tile(client, base_url, layer, z, x, y)
+                return await _fetch_tile(client, base_url, layer, z, x, y, query)
 
         return list(await asyncio.gather(*(_one(t) for t in tiles)))
 
@@ -123,18 +126,21 @@ async def benchmark(
     bbox: tuple[float, float, float, float],
     zoom: int,
     concurrency: int,
+    query: str = "",
+    city_slug: str | None = None,
 ) -> dict[str, object]:
     tiles = tiles_in_bbox(bbox, zoom)
     if not tiles:
         raise SystemExit(f"no tiles for bbox={bbox} zoom={zoom}")
 
-    cold = await _run_phase(base_url, layer, tiles, concurrency)
-    warm = await _run_phase(base_url, layer, tiles, concurrency)
+    cold = await _run_phase(base_url, layer, tiles, concurrency, query)
+    warm = await _run_phase(base_url, layer, tiles, concurrency, query)
 
     return {
         "timestamp": datetime.now(UTC).isoformat(),
         "base_url": base_url,
         "layer": layer,
+        "city_slug": city_slug,
         "bbox": list(bbox),
         "zoom": zoom,
         "tile_count": len(tiles),
@@ -147,7 +153,13 @@ async def benchmark(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tile_latency")
     parser.add_argument("--base-url", default="http://localhost:7800")
-    parser.add_argument("--layer", default="public.road_segments_tile")
+    # Phase 4b: the only tile function published by pg_tileserv that
+    # serves segment scores is `public.road_segments_tile_t` (migration
+    # 0019). The pre-Phase-4b `public.road_segments_tile` was a
+    # convenience non-time-varying view that the city-scope refactor
+    # dropped — there is no equivalent today and the t=NULL branch in
+    # `_t` produces the same "latest known score" result.
+    parser.add_argument("--layer", default="public.road_segments_tile_t")
     parser.add_argument(
         "--bbox",
         nargs=4,
@@ -157,6 +169,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--zoom", type=int, default=14)
     parser.add_argument("--concurrency", type=int, default=8)
+    parser.add_argument(
+        "--city-slug",
+        default=None,
+        help=(
+            "City slug to pass as a pg_tileserv function argument. "
+            "Required for the city-scoped tile functions (migration 0019). "
+            "Stored in the result JSON for the multi-city sweep."
+        ),
+    )
     parser.add_argument(
         "--budget-warm-p99-ms",
         type=float,
@@ -183,10 +204,24 @@ def main(argv: list[str] | None = None) -> int:
         args.bbox[3],
     )
 
-    result = asyncio.run(benchmark(args.base_url, args.layer, bbox, args.zoom, args.concurrency))
+    query = f"city_slug={args.city_slug}" if args.city_slug else ""
+
+    result = asyncio.run(
+        benchmark(
+            args.base_url,
+            args.layer,
+            bbox,
+            args.zoom,
+            args.concurrency,
+            query=query,
+            city_slug=args.city_slug,
+        )
+    )
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out_path = RESULTS_DIR / f"tile_latency-{result['timestamp'].replace(':', '-')}.json"
+    suffix = f"-{args.city_slug}" if args.city_slug else ""
+    timestamp_safe = result["timestamp"].replace(":", "-")  # type: ignore[union-attr]
+    out_path = RESULTS_DIR / f"tile_latency{suffix}-{timestamp_safe}.json"
     with out_path.open("w", encoding="utf-8") as f:
         json.dump(result, f, indent=2)
 

@@ -1,0 +1,42 @@
+{
+  "timestamp": "2026-05-18T19:30:18.959357+00:00",
+  "base_url": "http://localhost:7800",
+  "layer": "public.road_segments_tile_t",
+  "city_slug": "austin",
+  "bbox": [
+    -97.78,
+    30.28,
+    -97.72,
+    30.340000000000003
+  ],
+  "zoom": 14,
+  "reference_day": "2025-06-21",
+  "tile_count": 16,
+  "temporal_samples": 24,
+  "request_count_per_phase": 384,
+  "concurrency": 1,
+  "cold": {
+    "count": 384,
+    "p50_ms": 26.89035001094453,
+    "p95_ms": 64.72679995931685,
+    "p99_ms": 76.41360000707209,
+    "max_ms": 100.42189998785034,
+    "mean_ms": 29.940006508847244
+  },
+  "warm": {
+    "count": 384,
+    "p50_ms": 25.48134999233298,
+    "p95_ms": 61.90170004265383,
+    "p99_ms": 78.30889994511381,
+    "max_ms": 104.25099998246878,
+    "mean_ms": 28.638253386513195
+  },
+  "full_bbox": [
+    -97.94,
+    30.1,
+    -97.56,
+    30.52
+  ],
+  "sample_window_deg": 0.06,
+  "segment_count": 224422
+}
