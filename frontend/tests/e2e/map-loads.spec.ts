@@ -25,7 +25,10 @@ test.describe("Map view", () => {
 
     page.on("response", (resp) => {
       const url = resp.url();
-      if (url.includes("/tiles/") && url.endsWith(".pbf")) {
+      // Phase 4b appends ?city_slug=<slug> (and ?t=<iso> when scrubbing)
+      // to every tile URL — endsWith(".pbf") no longer matches.
+      // Use .includes(".pbf") so query-string tiles still register.
+      if (url.includes("/tiles/") && url.includes(".pbf")) {
         tileResponses.push(resp.status());
       }
     });

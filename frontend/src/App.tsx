@@ -53,10 +53,16 @@ const App = () => {
   );
 };
 
+// Phase 4b Task 4.4 added the CitySelector to this header; the
+// header originally sat at top-left and clickjacked the existing
+// LayerToggle (top-left, z-index 5). Moving the shell controls to
+// the top-right keeps map controls (LayerToggle, delta run-picker)
+// in their pre-Phase-4b position while giving the new shell
+// controls (City + Mode + Methodology) their own corner.
 const headerStyle: React.CSSProperties = {
   position: "absolute",
   top: 16,
-  left: 16,
+  right: 16,
   zIndex: 20,
   display: "flex",
   gap: 8,
